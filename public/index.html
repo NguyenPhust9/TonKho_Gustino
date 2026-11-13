@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gustino - Tồn kho theo chi nhánh CukCuk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <!-- Header Bar -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand-block">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <div class="brand-tagline">HỆ THỐNG GUSTINO · CUKCUK API</div>
+          <h1>Tồn kho theo chi nhánh</h1>
+          <p class="brand-sub">Cùng một mã hàng · Tra cứu tức thì chi nhánh nào còn hàng</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="status-pill" id="statusPill">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Đang sẵn sàng</span>
+        </div>
+        <button id="refresh" class="btn btn-primary" title="Tải lại toàn bộ dữ liệu mới nhất từ CukCuk">
+          <svg class="icon-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+            <path d="M16 21h5v-5"/>
+          </svg>
+          <span>Cập nhật</span>
+        </button>
+        <button id="exportCsv" class="btn btn-secondary" title="Xuất dữ liệu đối chiếu ra file Excel (CSV)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" x2="12" y1="15" y2="3"/>
+          </svg>
+          <span>Xuất Excel</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="page-body">
+    <!-- Filter Control Card -->
+    <section class="control-card">
+      <div class="filter-grid">
+        <div class="date-fields">
+          <div class="field-item">
+            <label for="from">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+              Từ ngày
+            </label>
+            <input id="from" type="date">
+          </div>
+
+          <div class="field-item">
+            <label for="to">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+              Đến ngày
+            </label>
+            <input id="to" type="date">
+          </div>
+        </div>
+
+        <div class="quick-presets">
+          <button type="button" class="preset-pill" data-preset="today">Hôm nay</button>
+          <button type="button" class="preset-pill" data-preset="week">7 ngày</button>
+          <button type="button" class="preset-pill active" data-preset="month">Tháng này</button>
+          <button type="button" class="preset-pill" data-preset="lastMonth">Tháng trước</button>
+        </div>
+
+        <div class="search-field">
+          <svg class="search-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg>
+          <input id="search" type="text" placeholder="Tìm theo mã hàng hoặc tên nguyên vật liệu...">
+          <button id="clearSearch" class="btn-clear" style="display:none;" title="Xóa tìm kiếm">&times;</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- KPI Summary Bar -->
+    <section class="kpi-grid">
+      <div class="kpi-box" id="kpiItemsBox">
+        <div class="kpi-icon icon-blue">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+        </div>
+        <div class="kpi-info">
+          <div class="kpi-num" id="kpiTotalItems">—</div>
+          <div class="kpi-label">Tổng mặt hàng theo dõi</div>
+        </div>
+      </div>
+
+      <div class="kpi-box">
+        <div class="kpi-icon icon-purple">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        </div>
+        <div class="kpi-info">
+          <div class="kpi-num" id="kpiTotalBranches">—</div>
+          <div class="kpi-label">Chi nhánh đồng bộ</div>
+        </div>
+      </div>
+
+      <div class="kpi-box" id="kpiNeedRestockBox">
+        <div class="kpi-icon icon-amber">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+        </div>
+        <div class="kpi-info">
+          <div class="kpi-num text-amber" id="kpiOutStockItems">—</div>
+          <div class="kpi-label">Hàng hết / tồn ít (≤ 5)</div>
+        </div>
+      </div>
+
+      <div class="kpi-box" id="kpiNegativeBox">
+        <div class="kpi-icon icon-rose">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+        </div>
+        <div class="kpi-info">
+          <div class="kpi-num text-rose" id="kpiNegativeItems">—</div>
+          <div class="kpi-label">Mặt hàng bị tồn âm (&lt; 0)</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sub-header Toolbar & View Switcher -->
+    <section class="toolbar-card">
+      <div class="tabs-group">
+        <button class="tab-chip active" data-tab="all" id="tabAll">
+          Tất cả <span class="tab-count" id="countAll">0</span>
+        </button>
+        <button class="tab-chip" data-tab="warning" id="tabWarning">
+          Cần chú ý (Hết / Âm) <span class="tab-count" id="countWarning">0</span>
+        </button>
+        <button class="tab-chip" data-tab="negative" id="tabNegative">
+          Có chi nhánh âm (&lt; 0) <span class="tab-count" id="countNegative">0</span>
+        </button>
+        <button class="tab-chip" data-tab="allAvailable" id="tabAllAvailable">
+          Còn hàng toàn bộ <span class="tab-count" id="countAvailable">0</span>
+        </button>
+      </div>
+
+      <div class="view-controls">
+        <div class="view-toggle">
+          <button id="viewCardBtn" class="toggle-btn active" title="Xem dạng thẻ nguyên liệu">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+            <span>Dạng Thẻ</span>
+          </button>
+          <button id="viewTableBtn" class="toggle-btn" title="Xem dạng bảng ma trận đối chiếu 7 chi nhánh">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+            <span>Bảng Ma Trận</span>
+          </button>
+        </div>
+        <span class="summary-text" id="summary">Đang chuẩn bị...</span>
+      </div>
+    </section>
+
+    <!-- MAIN VIEW CONTAINER -->
+    <main class="content-area">
+      <!-- 1. CARD VIEW (Default) -->
+      <section id="cardsView" class="cards-grid"></section>
+
+      <!-- 2. MATRIX TABLE VIEW -->
+      <section id="matrixView" class="matrix-card" style="display: none;">
+        <div class="table-scroll">
+          <table id="matrixTable">
+            <thead id="matrixHead"></thead>
+            <tbody id="matrixBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

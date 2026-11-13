@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/inventory/all.mjs": {
+      "maxDuration": 60
+    }
+  }
+}
