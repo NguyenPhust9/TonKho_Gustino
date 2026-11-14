@@ -135,7 +135,7 @@ function renderCardsView(list) {
           <span class="total-pill">Tổng: ${formatQty(g.totalQty)}</span>
         </div>
         <h2 class="card-title" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</h2>
-        ${g.minimumStock > 0 ? `<div class="minimum-stock">Tồn tối thiểu B004: ${formatQty(g.minimumStock)} ${escapeHtml(g.unit)}</div>` : ''}
+        <div class="minimum-stock ${g.minimumStock > 0 ? 'configured' : ''}">Tồn tối thiểu B004: ${g.minimumStock === null ? 'Không có dữ liệu' : `${formatQty(g.minimumStock)} ${escapeHtml(g.unit)}${g.minimumStock === 0 ? ' (chưa thiết lập)' : ''}`}</div>
         <div class="branch-list">
           ${branchRows}
         </div>
@@ -204,7 +204,7 @@ function renderMatrixView(list) {
         <td class="sticky-code"><span class="item-code">${escapeHtml(g.code)}</span></td>
         <td class="sticky-name" style="font-weight: 500;">${escapeHtml(g.name)}</td>
         <td style="text-align: center;"><span class="item-unit">${escapeHtml(g.unit)}</span></td>
-        <td class="num-cell">${g.minimumStock > 0 ? formatQty(g.minimumStock) : '—'}</td>
+        <td class="num-cell">${g.minimumStock === null ? '—' : formatQty(g.minimumStock)}</td>
         ${branchCells}
         <td class="num-cell cell-total">${formatQty(g.totalQty)}</td>
       </tr>
@@ -289,7 +289,7 @@ async function load() {
           code: String(x.InventoryItemCode || '').trim() || '—',
           name: x.InventoryItemName || 'Không tên',
           unit: x.UnitName || 'Chưa rõ ĐVT',
-          minimumStock: Number(x.MinimumStock || 0),
+          minimumStock: x.MinimumStock === null ? null : Number(x.MinimumStock || 0),
           branches: []
         })
       }
