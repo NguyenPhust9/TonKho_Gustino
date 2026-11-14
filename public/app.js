@@ -289,7 +289,9 @@ async function load() {
 
     rawBranches = Array.isArray(data.branches) ? data.branches : []
     if (data.minimumStockSource) {
-      minStockSource = data.minimumStockSource.name ? `${data.minimumStockSource.name} (${data.minimumStockSource.code})` : data.minimumStockSource
+      minStockSource = data.minimumStockSource.name
+        ? (data.minimumStockSource.code ? `${data.minimumStockSource.name} (${data.minimumStockSource.code})` : data.minimumStockSource.name)
+        : data.minimumStockSource
     }
 
     // Nhóm mặt hàng
