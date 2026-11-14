@@ -112,8 +112,8 @@ function renderCardsView(list) {
 
   const html = list.map((g) => {
     const branchRows = g.branches.map((b) => {
-      const statusClass = getBranchStatusClass(b.qty, g.minimumStock)
-      const statusText = getBranchStatusLabel(b.qty, g.minimumStock)
+      const statusClass = getBranchStatusClass(b.qty, b.minimumStock || 0)
+      const statusText = getBranchStatusLabel(b.qty, b.minimumStock || 0)
 
       return `
         <div class="branch-row ${statusClass}">
@@ -185,7 +185,7 @@ function renderMatrixView(list) {
       <th class="sticky-code" style="width: 110px;">Mã hàng</th>
       <th class="sticky-name">Tên nguyên vật liệu</th>
       <th class="th-center" style="width: 80px;">ĐVT</th>
-      <th class="th-num" style="width: 110px;">Tồn tối thiểu<br><small style="color: #94a3b8; font-weight: normal;">B004</small></th>
+      <th class="th-num" style="width: 110px;">Tồn tối thiểu<br><small style="color: #94a3b8; font-weight: normal;">${escapeHtml(minStockSource || 'B004')}</small></th>
       ${branchHeaders}
       <th class="th-num" style="background: #f8fafc; font-weight: 700;">Tổng tồn</th>
     </tr>
@@ -289,7 +289,7 @@ async function load() {
 
     rawBranches = Array.isArray(data.branches) ? data.branches : []
     if (data.minimumStockSource) {
-      minStockSource = data.minimumStockSource
+      minStockSource = data.minimumStockSource.name ? `${data.minimumStockSource.name} (${data.minimumStockSource.code})` : data.minimumStockSource
     }
 
     // Nhóm mặt hàng
@@ -308,8 +308,10 @@ async function load() {
       map.get(key).branches.push({
         name: x.BranchName,
         code: x.BranchCode,
-        qty: Number(x.EndingStock || 0)
+        qty: Number(x.EndingStock || 0),
+        minimumStock: x.MinimumStock === null ? null : Number(x.MinimumStock || 0)
       })
+      if (x.MinimumStock !== null) map.get(key).minimumStock = Number(x.MinimumStock || 0)
     })
 
     // Tính toán tổng tồn và trạng thái cho từng mặt hàng
@@ -317,7 +319,7 @@ async function load() {
       const totalQty = g.branches.reduce((sum, b) => sum + b.qty, 0)
       const hasNegative = g.branches.some((b) => b.qty < 0)
       const hasEmpty = g.branches.some((b) => b.qty === 0)
-      const hasBelowMinimum = g.minimumStock > 0 && g.branches.some((b) => b.qty > 0 && b.qty < g.minimumStock)
+      const hasBelowMinimum = g.branches.some((b) => b.minimumStock > 0 && b.qty > 0 && b.qty < b.minimumStock)
       const allAvailable = g.branches.every((b) => b.qty > 0)
 
       return {

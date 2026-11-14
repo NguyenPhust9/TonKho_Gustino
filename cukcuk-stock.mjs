@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import b004MinimumStocks from './data/b004-minimum-stocks.json' with { type: 'json' }
+import minimumStockConfig from './data/minimum-stocks-by-branch.json' with { type: 'json' }
 
 for (const envFile of ['.env.local', '.env']) {
   if (existsSync(envFile) && typeof process.loadEnvFile === 'function') {
@@ -9,7 +9,7 @@ for (const envFile of ['.env.local', '.env']) {
 }
 
 const ROOT = 'https://graphapi.cukcuk.vn'
-const minimumStockByCode = b004MinimumStocks.minimumStocks || {}
+const minimumStocksByBranch = Object.fromEntries(Object.entries(minimumStockConfig.branches || {}).map(([code, config]) => [code, config.minimumStocks || {}]))
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 async function request(path, { token, companyCode, body } = {}) {
   for (let retry = 0; ; retry++) {
@@ -40,9 +40,10 @@ export async function getAllStockSummaries({ fromDate, toDate } = {}) {
     branches: results.map(({ branch }) => branch),
     fromDate,
     toDate,
-    minimumStockSource: b004MinimumStocks.branchCode,
+    minimumStockSource: { name: 'Theo từng chi nhánh' },
     rows: results.flatMap(({ branch, rows }) => rows.map((row) => {
       const code = String(row.InventoryItemCode || '').trim()
+      const minimumStockByCode = minimumStocksByBranch[branch.code] || {}
       return {
         ...row,
         BranchCode: branch.code,
