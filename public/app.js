@@ -63,7 +63,7 @@ function getFilteredGroups() {
 
   return rawGroups.filter((g) => {
     // 1. Lọc theo tab trạng thái
-    if (currentTab === 'warning' && !(g.hasEmpty || g.hasNegative)) return false
+    if (currentTab === 'warning' && !(g.hasEmpty || g.hasNegative || g.hasBelowMinimum)) return false
     if (currentTab === 'negative' && !g.hasNegative) return false
     if (currentTab === 'allAvailable' && !g.allAvailable) return false
 
@@ -79,15 +79,17 @@ function getFilteredGroups() {
   })
 }
 
-function getBranchStatusClass(qty) {
+function getBranchStatusClass(qty, minimumStock = 0) {
   if (qty < 0) return 'status-negative'
   if (qty === 0) return 'status-empty'
+  if (minimumStock > 0 && qty < minimumStock) return 'status-low'
   return 'status-available'
 }
 
-function getBranchStatusLabel(qty) {
+function getBranchStatusLabel(qty, minimumStock = 0) {
   if (qty < 0) return `${formatQty(qty)} (Tồn âm)`
   if (qty === 0) return '0 (Hết hàng)'
+  if (minimumStock > 0 && qty < minimumStock) return `${formatQty(qty)} (dưới tối thiểu ${formatQty(minimumStock)})`
   return formatQty(qty)
 }
 
@@ -109,8 +111,8 @@ function renderCardsView(list) {
 
   const html = list.map((g) => {
     const branchRows = g.branches.map((b) => {
-      const statusClass = getBranchStatusClass(b.qty)
-      const statusText = getBranchStatusLabel(b.qty)
+      const statusClass = getBranchStatusClass(b.qty, g.minimumStock)
+      const statusText = getBranchStatusLabel(b.qty, g.minimumStock)
 
       return `
         <div class="branch-row ${statusClass}">
@@ -133,6 +135,7 @@ function renderCardsView(list) {
           <span class="total-pill">Tổng: ${formatQty(g.totalQty)}</span>
         </div>
         <h2 class="card-title" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</h2>
+        ${g.minimumStock > 0 ? `<div class="minimum-stock">Tồn tối thiểu B004: ${formatQty(g.minimumStock)} ${escapeHtml(g.unit)}</div>` : ''}
         <div class="branch-list">
           ${branchRows}
         </div>
@@ -173,6 +176,7 @@ function renderMatrixView(list) {
       <th class="sticky-code" style="width: 110px;">Mã hàng</th>
       <th class="sticky-name">Tên nguyên vật liệu</th>
       <th class="th-center" style="width: 80px;">ĐVT</th>
+      <th class="th-num" style="width: 110px;">Tồn tối thiểu<br><small style="color: #94a3b8; font-weight: normal;">B004</small></th>
       ${branchHeaders}
       <th class="th-num" style="background: #f8fafc; font-weight: 700;">Tổng tồn</th>
     </tr>
@@ -188,6 +192,7 @@ function renderMatrixView(list) {
       let cellStyle = ''
       if (qty < 0) cellStyle = 'color: #dc2626; font-weight: 700; background: #fef2f2;'
       else if (qty === 0) cellStyle = 'color: #94a3b8;'
+      else if (g.minimumStock > 0 && qty < g.minimumStock) cellStyle = 'color: #b45309; font-weight: 700; background: #fffbeb;'
       else cellStyle = 'color: #047857; font-weight: 600;'
 
       return `<td class="num-cell" style="${cellStyle}">${formatQty(qty)}</td>`
@@ -199,6 +204,7 @@ function renderMatrixView(list) {
         <td class="sticky-code"><span class="item-code">${escapeHtml(g.code)}</span></td>
         <td class="sticky-name" style="font-weight: 500;">${escapeHtml(g.name)}</td>
         <td style="text-align: center;"><span class="item-unit">${escapeHtml(g.unit)}</span></td>
+        <td class="num-cell">${g.minimumStock > 0 ? formatQty(g.minimumStock) : '—'}</td>
         ${branchCells}
         <td class="num-cell cell-total">${formatQty(g.totalQty)}</td>
       </tr>
@@ -228,10 +234,10 @@ function render() {
 function updateKPIs() {
   const totalItems = rawGroups.length
   const totalBranches = rawBranches.length
-  const outStockCount = rawGroups.filter((g) => g.hasEmpty).length
   const negativeCount = rawGroups.filter((g) => g.hasNegative).length
   const allAvailableCount = rawGroups.filter((g) => g.allAvailable).length
-  const warningCount = rawGroups.filter((g) => g.hasEmpty || g.hasNegative).length
+  const warningCount = rawGroups.filter((g) => g.hasEmpty || g.hasNegative || g.hasBelowMinimum).length
+  const outStockCount = warningCount
 
   $('kpiTotalItems').textContent = formatQty(totalItems)
   $('kpiTotalBranches').textContent = formatQty(totalBranches)
@@ -277,12 +283,13 @@ async function load() {
     // Nhóm mặt hàng
     const map = new Map()
     data.rows.forEach((x) => {
-      const key = x.InventoryItemCode || x.InventoryItemName
+      const key = String(x.InventoryItemCode || x.InventoryItemName || '').trim()
       if (!map.has(key)) {
         map.set(key, {
-          code: x.InventoryItemCode || '—',
+          code: String(x.InventoryItemCode || '').trim() || '—',
           name: x.InventoryItemName || 'Không tên',
           unit: x.UnitName || 'Chưa rõ ĐVT',
+          minimumStock: Number(x.MinimumStock || 0),
           branches: []
         })
       }
@@ -298,6 +305,7 @@ async function load() {
       const totalQty = g.branches.reduce((sum, b) => sum + b.qty, 0)
       const hasNegative = g.branches.some((b) => b.qty < 0)
       const hasEmpty = g.branches.some((b) => b.qty === 0)
+      const hasBelowMinimum = g.minimumStock > 0 && g.branches.some((b) => b.qty > 0 && b.qty < g.minimumStock)
       const allAvailable = g.branches.every((b) => b.qty > 0)
 
       return {
@@ -305,6 +313,7 @@ async function load() {
         totalQty,
         hasNegative,
         hasEmpty,
+        hasBelowMinimum,
         allAvailable
       }
     })

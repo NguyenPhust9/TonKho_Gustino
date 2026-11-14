@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import b004MinimumStocks from './data/b004-minimum-stocks.json' with { type: 'json' }
 
 for (const envFile of ['.env.local', '.env']) {
   if (existsSync(envFile) && typeof process.loadEnvFile === 'function') {
@@ -8,6 +9,7 @@ for (const envFile of ['.env.local', '.env']) {
 }
 
 const ROOT = 'https://graphapi.cukcuk.vn'
+const minimumStockByCode = b004MinimumStocks.minimumStocks || {}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 async function request(path, { token, companyCode, body } = {}) {
   for (let retry = 0; ; retry++) {
@@ -34,7 +36,21 @@ export async function getAllStockSummaries({ fromDate, toDate } = {}) {
     results.push(await getStockSummary({ branchCode: branch.code, fromDate, toDate }))
     await sleep(400)
   }
-  return { branches: results.map(({ branch }) => branch), fromDate, toDate, rows: results.flatMap(({ branch, rows }) => rows.map((row) => ({ ...row, BranchCode: branch.code, BranchName: branch.name }))) }
+  return {
+    branches: results.map(({ branch }) => branch),
+    fromDate,
+    toDate,
+    minimumStockSource: b004MinimumStocks.branchCode,
+    rows: results.flatMap(({ branch, rows }) => rows.map((row) => {
+      const code = String(row.InventoryItemCode || '').trim()
+      return {
+        ...row,
+        BranchCode: branch.code,
+        BranchName: branch.name,
+        MinimumStock: Object.hasOwn(minimumStockByCode, code) ? minimumStockByCode[code] : null
+      }
+    }))
+  }
 }
 
 export async function getStockSummary({ branchCode, fromDate, toDate } = {}) {

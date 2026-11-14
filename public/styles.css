@@ -619,6 +619,16 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.minimum-stock {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+  border-radius: 5px;
+  padding: 5px 8px;
+}
+
 .card-title {
   font-size: 15px;
   font-weight: 600;
@@ -709,6 +719,16 @@ body {
   color: #b45309;
   font-size: 12px;
   font-weight: 600;
+}
+
+.status-low {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.status-low .branch-title,
+.status-low .branch-qty {
+  color: #b45309;
 }
 
 .status-negative {
