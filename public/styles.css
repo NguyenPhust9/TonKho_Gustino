@@ -619,22 +619,6 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.minimum-stock {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #64748b;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 5px;
-  padding: 5px 8px;
-}
-
-.minimum-stock.configured {
-  color: #92400e;
-  background: #fffbeb;
-  border-color: #fef3c7;
-}
-
 .card-title {
   font-size: 15px;
   font-weight: 600;
@@ -653,6 +637,73 @@ body {
   flex-direction: column;
   gap: 6px;
   margin-top: 2px;
+  flex: 1;
+}
+
+/* Minimum Stock Row at bottom of card */
+.min-stock-row {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.min-stock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  cursor: default;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.min-stock-btn svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.min-stock-row.configured .min-stock-btn {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.min-stock-row.configured .min-stock-btn svg {
+  color: #b45309;
+}
+
+.min-stock-val {
+  margin-left: auto;
+  text-align: right;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums lining-nums;
+  white-space: nowrap;
+}
+
+.min-stock-val.has-min {
+  color: #b45309;
+}
+
+.min-stock-val.empty {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted);
 }
 
 .branch-row {

@@ -7,6 +7,7 @@ let rawBranches = []
 let rawGroups = []
 let currentTab = 'all'
 let currentView = 'cards' // 'cards' | 'table'
+let minStockSource = 'B004'
 
 // ================= NUMBER FORMATTING =================
 // Định dạng chuẩn, số tự nhiên, không dùng font nghệ thuật hay ký hiệu lạ
@@ -135,9 +136,17 @@ function renderCardsView(list) {
           <span class="total-pill">Tổng: ${formatQty(g.totalQty)}</span>
         </div>
         <h2 class="card-title" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</h2>
-        <div class="minimum-stock ${g.minimumStock > 0 ? 'configured' : ''}">Tồn tối thiểu B004: ${g.minimumStock === null ? 'Không có dữ liệu' : formatQty(g.minimumStock)}</div>
         <div class="branch-list">
           ${branchRows}
+        </div>
+        <div class="min-stock-row ${g.minimumStock > 0 ? 'configured' : ''}">
+          <button type="button" class="min-stock-btn" disabled tabindex="-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+            Tồn tối thiểu ${escapeHtml(minStockSource || 'B004')}
+          </button>
+          <span class="min-stock-val ${g.minimumStock > 0 ? 'has-min' : g.minimumStock === null ? 'empty' : ''}">
+            ${g.minimumStock === null ? 'Không có dữ liệu' : formatQty(g.minimumStock)}
+          </span>
         </div>
       </article>
     `
@@ -279,6 +288,9 @@ async function load() {
     if (!res.ok) throw new Error(data.error || 'Lỗi máy chủ')
 
     rawBranches = Array.isArray(data.branches) ? data.branches : []
+    if (data.minimumStockSource) {
+      minStockSource = data.minimumStockSource
+    }
 
     // Nhóm mặt hàng
     const map = new Map()
