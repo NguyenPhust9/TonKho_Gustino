@@ -119,7 +119,6 @@ function renderCardsView(list) {
         <div class="branch-row ${statusClass}">
           <div class="branch-title">
             <span>${escapeHtml(b.name)}</span>
-            <span class="branch-code-badge">${escapeHtml(b.code)}</span>
           </div>
           <div class="branch-qty">${statusText}</div>
         </div>
@@ -142,7 +141,7 @@ function renderCardsView(list) {
         <div class="min-stock-row ${g.minimumStock > 0 ? 'configured' : ''}">
           <button type="button" class="min-stock-btn" disabled tabindex="-1">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
-            Tồn tối thiểu ${escapeHtml(minStockSource || 'B004')}
+            Tồn tối thiểu
           </button>
           <span class="min-stock-val ${g.minimumStock > 0 ? 'has-min' : g.minimumStock === null ? 'empty' : ''}">
             ${g.minimumStock === null ? 'Không có dữ liệu' : formatQty(g.minimumStock)}
@@ -174,8 +173,7 @@ function renderMatrixView(list) {
   // Tạo tiêu đề bảng đối chiếu
   const branchHeaders = rawBranches.map((b) => `
     <th class="th-num" title="${escapeHtml(b.name)}">
-      ${escapeHtml(b.name)}<br>
-      <small style="color: #94a3b8; font-weight: normal;">${escapeHtml(b.code)}</small>
+      ${escapeHtml(b.name)}
     </th>
   `).join('')
 
@@ -185,7 +183,7 @@ function renderMatrixView(list) {
       <th class="sticky-code" style="width: 110px;">Mã hàng</th>
       <th class="sticky-name">Tên nguyên vật liệu</th>
       <th class="th-center" style="width: 80px;">ĐVT</th>
-      <th class="th-num" style="width: 110px;">Tồn tối thiểu<br><small style="color: #94a3b8; font-weight: normal;">${escapeHtml(minStockSource || 'B004')}</small></th>
+      <th class="th-num" style="width: 110px;">Tồn tối thiểu</th>
       ${branchHeaders}
       <th class="th-num" style="background: #f8fafc; font-weight: 700;">Tổng tồn</th>
     </tr>
