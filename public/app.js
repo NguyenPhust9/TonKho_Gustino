@@ -135,7 +135,7 @@ function renderCardsView(list) {
           <span class="total-pill">Tổng: ${formatQty(g.totalQty)}</span>
         </div>
         <h2 class="card-title" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</h2>
-        <div class="minimum-stock ${g.minimumStock > 0 ? 'configured' : ''}">Tồn tối thiểu B004: ${g.minimumStock === null ? 'Không có dữ liệu' : `${formatQty(g.minimumStock)} ${escapeHtml(g.unit)}${g.minimumStock === 0 ? ' (chưa thiết lập)' : ''}`}</div>
+        <div class="minimum-stock ${g.minimumStock > 0 ? 'configured' : ''}">Tồn tối thiểu B004: ${g.minimumStock === null ? 'Không có dữ liệu' : formatQty(g.minimumStock)}</div>
         <div class="branch-list">
           ${branchRows}
         </div>
