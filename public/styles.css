@@ -749,6 +749,46 @@ body {
   gap: 5px;
 }
 
+.branch-metrics {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.branch-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  min-width: 36px;
+}
+
+.branch-metric span {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.branch-metric strong {
+  color: #047857;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.branch-metric.minimum {
+  border-left: 1px solid #dbe4ee;
+  padding-left: 12px;
+}
+
+.branch-metric.minimum strong {
+  color: #475569;
+}
+
+.status-low .branch-metric:first-child strong { color: #b45309; }
+.status-negative .branch-metric:first-child strong { color: #dc2626; }
+.status-empty .branch-metric:first-child strong { color: #b45309; }
+
 /* Clean status tags */
 .status-available {
   background: #f0fdf4;
