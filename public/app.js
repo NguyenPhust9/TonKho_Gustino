@@ -150,7 +150,11 @@ function renderCardsView(list) {
   }
 
   const html = list.map((g) => {
-    const branchRows = g.branches.map((b) => {
+    const visibleBranches = currentTab === 'belowMinimum'
+      ? g.branches.filter((b) => b.qty > 0 && b.minimumStock > 0 && b.qty < b.minimumStock)
+      : g.branches
+    const visibleTotal = visibleBranches.reduce((sum, b) => sum + b.qty, 0)
+    const branchRows = visibleBranches.map((b) => {
       const statusClass = getBranchStatusClass(b.qty, b.minimumStock || 0)
       const statusText = getBranchStatusLabel(b.qty)
 
@@ -174,7 +178,7 @@ function renderCardsView(list) {
             <span class="item-code">${escapeHtml(g.code)}</span>
             <span class="item-unit">${escapeHtml(g.unit)}</span>
           </div>
-          <span class="total-pill">Tổng: ${formatQty(g.totalQty)}</span>
+          <span class="total-pill">Tổng: ${formatQty(visibleTotal)}</span>
         </div>
         <h2 class="card-title" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</h2>
         <div class="branch-list">
