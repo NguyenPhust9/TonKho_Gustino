@@ -105,7 +105,8 @@ function getFilteredGroups(groups = getSelectedGroups()) {
 
   return groups.filter((g) => {
     // 1. Lọc theo tab trạng thái
-    if (currentTab === 'warning' && !(g.hasEmpty || g.hasNegative || g.hasBelowMinimum)) return false
+    if (currentTab === 'outStock' && !g.hasEmpty) return false
+    if (currentTab === 'belowMinimum' && !g.hasBelowMinimum) return false
     if (currentTab === 'negative' && !g.hasNegative) return false
     if (currentTab === 'allAvailable' && !g.allAvailable) return false
 
@@ -128,10 +129,7 @@ function getBranchStatusClass(qty, minimumStock = 0) {
   return 'status-available'
 }
 
-function getBranchStatusLabel(qty, minimumStock = 0) {
-  if (qty < 0) return `${formatQty(qty)} (Tồn âm)`
-  if (qty === 0) return '0 (Hết hàng)'
-  if (minimumStock > 0 && qty < minimumStock) return `${formatQty(qty)} (dưới tối thiểu ${formatQty(minimumStock)})`
+function getBranchStatusLabel(qty) {
   return formatQty(qty)
 }
 
@@ -154,7 +152,7 @@ function renderCardsView(list) {
   const html = list.map((g) => {
     const branchRows = g.branches.map((b) => {
       const statusClass = getBranchStatusClass(b.qty, b.minimumStock || 0)
-      const statusText = getBranchStatusLabel(b.qty, b.minimumStock || 0)
+      const statusText = getBranchStatusLabel(b.qty)
 
       return `
         <div class="branch-row ${statusClass}">
@@ -282,16 +280,18 @@ function updateKPIs(groups) {
   const totalBranches = rawBranches.length
   const negativeCount = groups.filter((g) => g.hasNegative).length
   const allAvailableCount = groups.filter((g) => g.allAvailable).length
-  const warningCount = groups.filter((g) => g.hasEmpty || g.hasNegative || g.hasBelowMinimum).length
-  const outStockCount = warningCount
+  const outStockCount = groups.filter((g) => g.hasEmpty).length
+  const belowMinimumCount = groups.filter((g) => g.hasBelowMinimum).length
 
   $('kpiTotalItems').textContent = formatQty(totalItems)
   $('kpiTotalBranches').textContent = formatQty(totalBranches)
   $('kpiOutStockItems').textContent = formatQty(outStockCount)
+  $('kpiBelowMinimumItems').textContent = formatQty(belowMinimumCount)
   $('kpiNegativeItems').textContent = formatQty(negativeCount)
 
   $('countAll').textContent = formatQty(totalItems)
-  $('countWarning').textContent = formatQty(warningCount)
+  $('countOutStock').textContent = formatQty(outStockCount)
+  $('countBelowMinimum').textContent = formatQty(belowMinimumCount)
   $('countNegative').textContent = formatQty(negativeCount)
   $('countAvailable').textContent = formatQty(allAvailableCount)
 }
@@ -505,8 +505,11 @@ window.addEventListener('DOMContentLoaded', () => {
   $('kpiItemsBox').addEventListener('click', () => {
     $('tabAll').click()
   })
-  $('kpiNeedRestockBox').addEventListener('click', () => {
-    $('tabWarning').click()
+  $('kpiOutStockBox').addEventListener('click', () => {
+    $('tabOutStock').click()
+  })
+  $('kpiBelowMinimumBox').addEventListener('click', () => {
+    $('tabBelowMinimum').click()
   })
   $('kpiNegativeBox').addEventListener('click', () => {
     $('tabNegative').click()
