@@ -5,6 +5,7 @@ const $ = (id) => document.getElementById(id)
 // State
 let rawBranches = []
 let rawGroups = []
+let selectedBranchCodes = null
 let currentTab = 'all'
 let currentView = 'cards' // 'cards' | 'table'
 let minStockSource = 'B004'
@@ -59,10 +60,50 @@ function setDatePreset(type) {
 }
 
 // ================= FILTER & DATA COMPUTATION =================
-function getFilteredGroups() {
+function getSelectedBranches() {
+  return rawBranches.filter((b) => selectedBranchCodes?.has(b.code))
+}
+
+function renderBranchOptions(previousBranches) {
+  const previousCodes = new Set(previousBranches.map((b) => b.code))
+  selectedBranchCodes = new Set(rawBranches
+    .filter((b) => selectedBranchCodes === null || selectedBranchCodes.has(b.code) || !previousCodes.has(b.code))
+    .map((b) => b.code))
+
+  $('branchFilter').hidden = !rawBranches.length
+  $('branchOptions').innerHTML = rawBranches.map((b) => `
+    <label class="branch-option">
+      <input type="checkbox" value="${escapeHtml(b.code)}" ${selectedBranchCodes.has(b.code) ? 'checked' : ''}>
+      <span>${escapeHtml(b.name)}</span>
+    </label>
+  `).join('')
+}
+
+function getSelectedGroups() {
+  return rawGroups.map((g) => {
+    const branches = g.branches.filter((b) => selectedBranchCodes?.has(b.code))
+    return {
+      ...g,
+      branches,
+      totalQty: branches.reduce((sum, b) => sum + b.qty, 0),
+      hasNegative: branches.some((b) => b.qty < 0),
+      hasEmpty: branches.some((b) => b.qty === 0),
+      hasBelowMinimum: branches.some((b) => b.minimumStock > 0 && b.qty > 0 && b.qty < b.minimumStock),
+      allAvailable: branches.length > 0 && branches.every((b) => b.qty > 0)
+    }
+  }).filter((g) => g.branches.length > 0)
+}
+
+function getEmptyMessage() {
+  return rawBranches.length && !selectedBranchCodes?.size
+    ? 'Vui lòng chọn ít nhất một chi nhánh'
+    : 'Không tìm thấy nguyên vật liệu nào'
+}
+
+function getFilteredGroups(groups = getSelectedGroups()) {
   const query = ($('search').value || '').trim().toLowerCase()
 
-  return rawGroups.filter((g) => {
+  return groups.filter((g) => {
     // 1. Lọc theo tab trạng thái
     if (currentTab === 'warning' && !(g.hasEmpty || g.hasNegative || g.hasBelowMinimum)) return false
     if (currentTab === 'negative' && !g.hasNegative) return false
@@ -103,7 +144,7 @@ function renderCardsView(list) {
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
-        <p style="font-weight: 600; margin: 8px 0 4px; color: #334155;">Không tìm thấy nguyên vật liệu nào</p>
+        <p style="font-weight: 600; margin: 8px 0 4px; color: #334155;">${getEmptyMessage()}</p>
         <p style="font-size: 12.5px; color: #94a3b8; margin: 0;">Thử đổi từ khóa hoặc chọn tab lọc khác.</p>
       </div>
     `
@@ -152,12 +193,14 @@ function renderCardsView(list) {
 function renderMatrixView(list) {
   const thead = $('matrixHead')
   const tbody = $('matrixBody')
+  const branches = getSelectedBranches()
 
   if (!rawBranches.length || !list.length) {
+    thead.innerHTML = ''
     tbody.innerHTML = `
       <tr>
-        <td colspan="15" class="view-empty">
-          <p style="font-weight: 600; color: #334155;">Không có dữ liệu hiển thị</p>
+        <td colspan="${branches.length + 6}" class="view-empty">
+          <p style="font-weight: 600; color: #334155;">${getEmptyMessage()}</p>
         </td>
       </tr>
     `
@@ -165,7 +208,7 @@ function renderMatrixView(list) {
   }
 
   // Tạo tiêu đề bảng đối chiếu
-  const branchHeaders = rawBranches.map((b) => `
+  const branchHeaders = branches.map((b) => `
     <th class="th-num" title="${escapeHtml(b.name)}">
       ${escapeHtml(b.name)}
     </th>
@@ -188,7 +231,7 @@ function renderMatrixView(list) {
     // Tạo map tồn theo branch code để ánh xạ nhanh
     const branchMap = new Map(g.branches.map((b) => [b.code, b.qty]))
 
-    const branchCells = rawBranches.map((b) => {
+    const branchCells = branches.map((b) => {
       const qty = branchMap.has(b.code) ? branchMap.get(b.code) : 0
       let cellStyle = ''
       if (qty < 0) cellStyle = 'color: #dc2626; font-weight: 700; background: #fef2f2;'
@@ -216,9 +259,11 @@ function renderMatrixView(list) {
 }
 
 function render() {
-  const filtered = getFilteredGroups()
+  const groups = getSelectedGroups()
+  const filtered = getFilteredGroups(groups)
+  updateKPIs(groups)
 
-  $('summary').textContent = `Hiển thị ${formatQty(filtered.length)} / ${formatQty(rawGroups.length)} mặt hàng · ${rawBranches.length} chi nhánh`
+  $('summary').textContent = `Hiển thị ${formatQty(filtered.length)} / ${formatQty(groups.length)} mặt hàng · ${getSelectedBranches().length} / ${rawBranches.length} chi nhánh`
 
   if (currentView === 'cards') {
     $('cardsView').style.display = 'grid'
@@ -232,12 +277,12 @@ function render() {
 }
 
 // ================= STATS & KPIS =================
-function updateKPIs() {
-  const totalItems = rawGroups.length
+function updateKPIs(groups) {
+  const totalItems = groups.length
   const totalBranches = rawBranches.length
-  const negativeCount = rawGroups.filter((g) => g.hasNegative).length
-  const allAvailableCount = rawGroups.filter((g) => g.allAvailable).length
-  const warningCount = rawGroups.filter((g) => g.hasEmpty || g.hasNegative || g.hasBelowMinimum).length
+  const negativeCount = groups.filter((g) => g.hasNegative).length
+  const allAvailableCount = groups.filter((g) => g.allAvailable).length
+  const warningCount = groups.filter((g) => g.hasEmpty || g.hasNegative || g.hasBelowMinimum).length
   const outStockCount = warningCount
 
   $('kpiTotalItems').textContent = formatQty(totalItems)
@@ -279,6 +324,7 @@ async function load() {
 
     if (!res.ok) throw new Error(data.error || 'Lỗi máy chủ')
 
+    const previousBranches = rawBranches
     rawBranches = Array.isArray(data.branches) ? data.branches : []
     if (data.minimumStockSource) {
       minStockSource = data.minimumStockSource.name
@@ -332,7 +378,7 @@ async function load() {
     pill.className = 'status-pill connected'
     $('statusText').textContent = `Đã đồng bộ ${rawBranches.length} chi nhánh`
 
-    updateKPIs()
+    renderBranchOptions(previousBranches)
     render()
   } catch (err) {
     console.error('Fetch error:', err)
@@ -357,19 +403,20 @@ async function load() {
 // ================= EXPORT CSV MATRIX =================
 function exportCsv() {
   const list = getFilteredGroups()
+  const branches = getSelectedBranches()
   if (!list.length || !rawBranches.length) {
     alert('Không có dữ liệu để xuất!')
     return
   }
 
-  const branchHeaders = rawBranches.map((b) => `"${b.name} (${b.code})"`)
-  const headers = ['STT', 'Mã hàng', 'Tên nguyên vật liệu', 'ĐVT', ...branchHeaders, 'Tổng tồn toàn hệ thống']
+  const branchHeaders = branches.map((b) => `"${b.name.replace(/"/g, '""')} (${b.code})"`)
+  const headers = ['STT', 'Mã hàng', 'Tên nguyên vật liệu', 'ĐVT', ...branchHeaders, 'Tổng tồn chi nhánh đã chọn']
 
   const csvRows = [headers.join(',')]
 
   list.forEach((g, idx) => {
     const branchMap = new Map(g.branches.map((b) => [b.code, b.qty]))
-    const branchQtys = rawBranches.map((b) => branchMap.has(b.code) ? branchMap.get(b.code) : 0)
+    const branchQtys = branches.map((b) => branchMap.has(b.code) ? branchMap.get(b.code) : 0)
 
     const row = [
       idx + 1,
@@ -412,6 +459,13 @@ window.addEventListener('DOMContentLoaded', () => {
 
   $('refresh').addEventListener('click', load)
   $('exportCsv').addEventListener('click', exportCsv)
+  $('branchOptions').addEventListener('change', (event) => {
+    const input = event.target
+    if (!input.matches('input[type="checkbox"]')) return
+    if (input.checked) selectedBranchCodes.add(input.value)
+    else selectedBranchCodes.delete(input.value)
+    render()
+  })
 
   // Presets ngày
   document.querySelectorAll('.preset-pill').forEach((btn) => {
