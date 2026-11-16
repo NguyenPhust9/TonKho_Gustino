@@ -152,7 +152,9 @@ function renderCardsView(list) {
   const html = list.map((g) => {
     const visibleBranches = currentTab === 'belowMinimum'
       ? g.branches.filter((b) => b.qty > 0 && b.minimumStock > 0 && b.qty < b.minimumStock)
-      : g.branches
+      : currentTab === 'outStock'
+        ? g.branches.filter((b) => b.qty === 0)
+        : g.branches
     const visibleTotal = visibleBranches.reduce((sum, b) => sum + b.qty, 0)
     const branchRows = visibleBranches.map((b) => {
       const statusClass = getBranchStatusClass(b.qty, b.minimumStock || 0)
