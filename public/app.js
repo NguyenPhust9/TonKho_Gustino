@@ -63,11 +63,27 @@ function setDatePreset(type) {
 // ================= FILTER & DATA COMPUTATION =================
 function getGroupLabels(branches) {
   const minimums = branches.map((b) => b.minimumStock)
-  const uniformMinimum = minimums.length > 0 && minimums.every((value) => value !== null && value === minimums[0])
+  const uniformMinimum = new Set(branches.map((b) => unitKey(b.unit))).size === 1 && minimums.length > 0 && minimums.every((value) => value !== null && value === minimums[0])
   const labels = [...new Set(branches.map((b) => b.conversionLabel).filter(Boolean))]
   return {
     minimumLabel: uniformMinimum ? formatQty(minimums[0]) : minimums.some((value) => value !== null) ? 'Theo chi nhánh' : '—',
     conversionLabel: labels.length === 1 ? labels[0] : labels.length ? 'Quy đổi theo từng chi nhánh' : ''
+  }
+}
+
+function getUnitSummary(branches) {
+  const totals = new Map()
+  for (const branch of branches) {
+    const key = unitKey(branch.unit)
+    if (!totals.has(key)) totals.set(key, { unit: branch.unit, qty: 0 })
+    totals.get(key).qty += branch.qty
+  }
+  const mixedUnits = totals.size > 1
+  return {
+    mixedUnits,
+    unit: mixedUnits ? 'ĐVT gốc' : [...totals.values()][0]?.unit || '',
+    totalQty: mixedUnits ? null : [...totals.values()][0]?.qty ?? 0,
+    totalLabel: [...totals.values()].map(({ unit, qty }) => `${formatQty(qty)}${mixedUnits ? ` ${unit}` : ''}`).join(' + ')
   }
 }
 
@@ -119,14 +135,15 @@ function groupStockRows(rows) {
     const choice = options.find((option) => option.available && unitKey(option.unit) === unitKey(selectedUnit)) || options[0]
     const unit = choice.unit
     const factor = choice.factor
-    // Separate units that cannot be converted, so totals never add bags to jars, etc.
-    const key = JSON.stringify([code || x.InventoryItemName || '', unit.toLocaleLowerCase('vi')])
+    // Keep every branch on one item; totals are calculated separately per unit.
+    const key = keyCode
     if (!map.has(key)) map.set(key, { code: code || '—', itemKey: keyCode, name: x.InventoryItemName || 'Không tên', unit, branches: [] })
     const minimum = x.MinimumStock
     map.get(key).branches.push({
       name: x.BranchName,
       code: x.BranchCode,
       qty: Number(x.EndingStock || 0) * factor,
+      unit,
       minimumStock: minimum == null ? null : Number(minimum) * factor,
       baseQty: Number(x.EndingStock || 0),
       baseUnit: String(x.UnitName || '').trim(),
@@ -136,7 +153,7 @@ function groupStockRows(rows) {
         ? `1 ${String(x.UnitName).trim()} = ${new Intl.NumberFormat('vi-VN', { maximumSignificantDigits: 12 }).format(factor)} ${unit}` : ''
     })
   })
-  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+  return [...map.values()].map((group) => ({ ...group, ...getUnitSummary(group.branches) })).sort((a, b) => a.name.localeCompare(b.name, 'vi'))
 }
 
 function setItemUnit(key, name) {
@@ -214,7 +231,7 @@ function getSelectedGroups() {
       ...g,
       branches,
       ...getGroupLabels(branches),
-      totalQty: branches.reduce((sum, b) => sum + b.qty, 0),
+      ...getUnitSummary(branches),
       hasNegative: branches.some((b) => b.qty < 0),
       hasEmpty: branches.some((b) => b.qty === 0),
       hasBelowMinimum: branches.some((b) => b.minimumStock > 0 && b.qty > 0 && b.qty < b.minimumStock),
@@ -286,7 +303,7 @@ function renderCardsView(list) {
         : currentTab === 'negative'
           ? g.branches.filter((b) => b.qty < 0)
           : g.branches
-    const visibleTotal = visibleBranches.reduce((sum, b) => sum + b.qty, 0)
+    const visibleTotal = getUnitSummary(visibleBranches).totalLabel
     const branchRows = visibleBranches.map((b) => {
       const statusClass = getBranchStatusClass(b.qty, b.minimumStock || 0)
       const statusText = getBranchStatusLabel(b.qty)
@@ -297,8 +314,8 @@ function renderCardsView(list) {
             <span>${escapeHtml(b.name)}</span>
           </div>
           <div class="branch-metrics">
-            <div class="branch-metric"><span>Tồn</span><strong>${statusText}</strong></div>
-            <div class="branch-metric minimum"><span>Tối thiểu</span><strong>${b.minimumStock === null ? '—' : formatQty(b.minimumStock)}</strong></div>
+            <div class="branch-metric"><span>Tồn${g.mixedUnits ? ` (${escapeHtml(b.unit)})` : ''}</span><strong>${statusText}</strong></div>
+            <div class="branch-metric minimum"><span>Tối thiểu${g.mixedUnits ? ` (${escapeHtml(b.unit)})` : ''}</span><strong>${b.minimumStock === null ? '—' : formatQty(b.minimumStock)}</strong></div>
           </div>
         </div>
       `
@@ -311,7 +328,7 @@ function renderCardsView(list) {
             <span class="item-code">${escapeHtml(g.code)}</span>
             ${renderUnitSelector(g)}
           </div>
-          <span class="total-pill">Tổng: ${formatQty(visibleTotal)}</span>
+          <span class="total-pill">Tổng: ${escapeHtml(visibleTotal)}</span>
         </div>
         <h2 class="card-title" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</h2>
         ${g.conversionLabel ? `<p class="conversion-note">${escapeHtml(g.conversionLabel)}</p>` : ''}
@@ -376,7 +393,7 @@ function renderMatrixView(list) {
       else if (branch?.minimumStock > 0 && qty < branch.minimumStock) cellStyle = 'color: #b45309; font-weight: 700; background: #fffbeb;'
       else cellStyle = 'color: #047857; font-weight: 600;'
 
-      return `<td class="num-cell" title="${branch ? escapeHtml(branchQuantityTitle(branch)) : ''}" style="${cellStyle}">${formatQty(qty)}</td>`
+      return `<td class="num-cell" title="${branch ? escapeHtml(branchQuantityTitle(branch)) : ''}" style="${cellStyle}">${formatQty(qty)}${g.mixedUnits && branch ? ` ${escapeHtml(branch.unit)}` : ''}</td>`
     }).join('')
 
     return `
@@ -385,9 +402,9 @@ function renderMatrixView(list) {
         <td class="sticky-code"><span class="item-code">${escapeHtml(g.code)}</span></td>
         <td class="sticky-name" style="font-weight: 500;">${escapeHtml(g.name)}</td>
         <td style="text-align: center;" title="${escapeHtml(g.conversionLabel)}">${renderUnitSelector(g)}</td>
-        <td class="num-cell" title="${escapeHtml(g.branches.map((b) => `${b.name}: ${b.minimumStock === null ? '—' : formatQty(b.minimumStock)} ${g.unit}`).join(' · '))}">${g.minimumLabel}</td>
+        <td class="num-cell" title="${escapeHtml(g.branches.map((b) => `${b.name}: ${b.minimumStock === null ? '—' : formatQty(b.minimumStock)} ${b.unit}`).join(' · '))}">${g.minimumLabel}</td>
         ${branchCells}
-        <td class="num-cell cell-total">${formatQty(g.totalQty)}</td>
+        <td class="num-cell cell-total">${escapeHtml(g.totalLabel)}</td>
       </tr>
     `
   }).join('')
@@ -517,7 +534,15 @@ function exportCsv() {
 
   const csvRows = [headers.join(',')]
 
-  list.forEach((g, idx) => {
+  // Export mixed original units on separate rows to preserve numeric CSV cells.
+  const exportGroups = list.flatMap((group) => {
+    const units = [...new Set(group.branches.map((branch) => unitKey(branch.unit)))]
+    return units.map((key) => {
+      const unitBranches = group.branches.filter((branch) => unitKey(branch.unit) === key)
+      return { ...group, branches: unitBranches, ...getUnitSummary(unitBranches) }
+    })
+  })
+  exportGroups.forEach((g, idx) => {
     const branchMap = new Map(g.branches.map((b) => [b.code, b.qty]))
     const branchQtys = branches.map((b) => branchMap.has(b.code) ? branchMap.get(b.code) : 0)
 

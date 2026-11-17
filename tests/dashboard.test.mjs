@@ -106,17 +106,19 @@ test('dumpling button switches portions to pieces and back in cards and matrix',
   assert.equal(harness.requests(), 1)
 })
 
-test('unconvertible units form separate rows instead of a mixed-unit total', () => {
+test('unconvertible units stay on one card with separate totals per unit', () => {
   const rows = [
     { InventoryItemCode: 'BO', InventoryItemName: 'Bơ', BranchCode: 'A', BranchName: '15H', UnitName: 'Hũ', EndingStock: 2, MinimumStock: null },
     { InventoryItemCode: 'BO', InventoryItemName: 'Bơ', BranchCode: 'B', BranchName: 'Bếp', UnitName: 'Bịch', EndingStock: 5, MinimumStock: null }
   ]
   const { context, elements } = dashboard(rows)
-  assert.equal(vm.runInContext('rawGroups.length', context), 2)
+  assert.equal(vm.runInContext('rawGroups.length', context), 1)
   vm.runInContext('render()', context)
   const cards = elements.get('cardsView').innerHTML
-  assert.ok(cards.includes('Tổng: 2'))
-  assert.ok(cards.includes('Tổng: 5'))
+  assert.ok(cards.includes('Tổng: 2 Hũ + 5 Bịch'))
+  assert.ok(cards.includes('Tồn (Hũ)'))
+  assert.ok(cards.includes('Tồn (Bịch)'))
+  assert.equal(vm.runInContext('getSelectedGroups()[0].totalQty', context), null)
   assert.ok(!cards.includes('Tổng: 7'))
 })
 
@@ -216,18 +218,51 @@ test('Kim Sa dropdown uses the confirmed 12 pieces per pack, and unknown units c
   assert.equal(vm.runInContext("rawGroups.find(g=>g.code==='BBKS45G').unit", context), 'Cái')
 })
 
-test('mixed base units only merge when all branches can use the chosen unit', () => {
+test('mixed base units keep all branches together and only accept valid common units', () => {
   const rows = [
     { InventoryItemCode: 'CAKE', BranchCode: 'A', UnitName: 'mẻ', EndingStock: 2, AvailableUnits: [{ unit: 'Cái', factor: 152, available: true }] },
     { InventoryItemCode: 'CAKE', BranchCode: 'B', UnitName: 'Cái', EndingStock: 3 }
   ]
   const { context } = dashboard(rows)
-  assert.equal(vm.runInContext('rawGroups.length', context), 2)
+  assert.equal(vm.runInContext('rawGroups.length', context), 1)
+  assert.equal(vm.runInContext('getSelectedGroups()[0].totalQty', context), null)
   vm.runInContext("setItemUnit('CAKE', 'Cái')", context)
   assert.equal(vm.runInContext('rawGroups.length', context), 1)
   assert.equal(vm.runInContext('getSelectedGroups()[0].totalQty', context), 307)
   vm.runInContext("setItemUnit('CAKE', 'mẻ')", context)
   assert.equal(vm.runInContext('rawGroups.length', context), 1)
   vm.runInContext("setItemUnit('CAKE', '__original__')", context)
-  assert.equal(vm.runInContext('rawGroups.length', context), 2)
+  assert.equal(vm.runInContext('rawGroups.length', context), 1)
+  assert.equal(vm.runInContext('getSelectedGroups()[0].totalQty', context), null)
+})
+
+test('original units keep the central kitchen visible alongside all six shops', async () => {
+  const shops = [40, 208, 5, 117, 95, 46].map((qty, i) => ({ InventoryItemCode: 'BANHDX', InventoryItemName: 'BÁNH ĐẬU XANH', BranchCode: `S${i}`, BranchName: `Shop ${i}`, UnitName: 'Cái', EndingStock: qty, MinimumStock: 50 }))
+  const source = [...shops, { InventoryItemCode: 'BANHDX', InventoryItemName: 'BÁNH ĐẬU XANH', BranchCode: 'K', BranchName: 'BẾP TRUNG TÂM', UnitName: 'mẻ', EndingStock: 8, MinimumStock: 2, AvailableUnits: [{ unit: 'Cái', factor: 152, available: true }] }]
+  const { context, elements, csv } = dashboard(source)
+  context.branches = source.map((row) => ({ code: row.BranchCode, name: row.BranchName }))
+  vm.runInContext('rawBranches = branches; selectedBranchCodes = new Set(branches.map(b => b.code)); render()', context)
+  const cards = elements.get('cardsView').innerHTML
+  assert.equal((cards.match(/<article /g) || []).length, 1)
+  assert.ok(cards.includes('BẾP TRUNG TÂM'))
+  assert.ok(cards.includes('Tồn (mẻ)'))
+  assert.ok(cards.includes('Tổng: 511 Cái + 8 mẻ'))
+  assert.equal(vm.runInContext('getSelectedGroups()[0].branches.length', context), 7)
+  for (let i = 0; i < 3; i++) {
+    vm.runInContext("setItemUnit('BANHDX', 'Cái')", context)
+    assert.equal(vm.runInContext('getSelectedGroups()[0].totalQty', context), 1727)
+    assert.ok(elements.get('cardsView').innerHTML.includes('BẾP TRUNG TÂM'))
+    vm.runInContext("setItemUnit('BANHDX', '__original__')", context)
+    assert.equal(vm.runInContext('getSelectedGroups()[0].branches.length', context), 7)
+    assert.equal(vm.runInContext('getSelectedGroups()[0].totalQty', context), null)
+  }
+  vm.runInContext("currentView = 'table'; render(); exportCsv()", context)
+  assert.ok(elements.get('matrixBody').innerHTML.includes('>8 mẻ<'))
+  assert.ok(elements.get('matrixBody').innerHTML.includes('511 Cái + 8 mẻ'))
+  const exported = await csv()
+  assert.ok(exported.includes('"Cái",40,208,5,117,95,46,0,511'))
+  assert.ok(exported.includes('"mẻ",0,0,0,0,0,0,8,8'))
+  vm.runInContext("selectedBranchCodes = new Set(['K']); render()", context)
+  assert.equal(vm.runInContext('getSelectedGroups()[0].unit', context), 'mẻ')
+  assert.equal(vm.runInContext('getSelectedGroups()[0].totalQty', context), 8)
 })
