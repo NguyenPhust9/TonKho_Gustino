@@ -4,10 +4,12 @@ const $ = (id) => document.getElementById(id)
 
 // State
 let rawBranches = []
+let rawRows = []
 let rawGroups = []
 let selectedBranchCodes = null
 let currentTab = 'all'
 let currentView = 'cards' // 'cards' | 'table'
+let currentUnitMode = 'converted' // 'original' | 'converted'
 let minStockSource = 'B004'
 
 // ================= NUMBER FORMATTING =================
@@ -69,20 +71,21 @@ function getGroupLabels(branches) {
   }
 }
 
-function groupStockRows(rows) {
+function groupStockRows(rows, unitMode = currentUnitMode) {
+  const converted = unitMode === 'converted'
   const map = new Map()
   rows.forEach((x) => {
     const code = String(x.InventoryItemCode || '').trim()
-    const unit = String(x.DisplayUnitName || x.UnitName || 'Chưa rõ ĐVT').trim()
+    const unit = String((converted && x.DisplayUnitName) || x.UnitName || 'Chưa rõ ĐVT').trim()
     // Separate units that cannot be converted, so totals never add bags to jars, etc.
     const key = JSON.stringify([code || x.InventoryItemName || '', unit.toLocaleLowerCase('vi')])
     if (!map.has(key)) map.set(key, { code: code || '—', name: x.InventoryItemName || 'Không tên', unit, branches: [] })
-    const conversion = x.AppliedConversion
-    const minimum = x.DisplayMinimumStock !== undefined ? x.DisplayMinimumStock : x.MinimumStock
+    const conversion = converted ? x.AppliedConversion : null
+    const minimum = converted && x.DisplayMinimumStock !== undefined ? x.DisplayMinimumStock : x.MinimumStock
     map.get(key).branches.push({
       name: x.BranchName,
       code: x.BranchCode,
-      qty: Number(x.DisplayEndingStock ?? x.EndingStock ?? 0),
+      qty: Number((converted ? x.DisplayEndingStock : undefined) ?? x.EndingStock ?? 0),
       minimumStock: minimum == null ? null : Number(minimum),
       baseQty: Number(x.EndingStock || 0),
       baseUnit: String(x.UnitName || '').trim(),
@@ -91,6 +94,21 @@ function groupStockRows(rows) {
     })
   })
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+}
+
+function setUnitMode(mode) {
+  if (mode !== 'original' && mode !== 'converted') return
+  currentUnitMode = mode
+  rawGroups = groupStockRows(rawRows)
+  render()
+}
+
+function updateUnitModeControls() {
+  for (const [id, mode] of [['unitOriginalBtn', 'original'], ['unitConvertedBtn', 'converted']]) {
+    const selected = currentUnitMode === mode
+    $(id).classList.toggle('active', selected)
+    $(id).setAttribute('aria-pressed', String(selected))
+  }
 }
 
 function branchQuantityTitle(branch) {
@@ -309,6 +327,7 @@ function renderMatrixView(list) {
 }
 
 function render() {
+  updateUnitModeControls()
   const groups = getSelectedGroups()
   const filtered = getFilteredGroups(groups)
   updateKPIs(groups)
@@ -384,7 +403,8 @@ async function load() {
         : data.minimumStockSource
     }
 
-    rawGroups = groupStockRows(data.rows)
+    rawRows = data.rows
+    rawGroups = groupStockRows(rawRows)
 
     pill.className = 'status-pill connected'
     $('statusText').textContent = `Đã đồng bộ ${rawBranches.length} chi nhánh`
@@ -470,6 +490,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
   $('refresh').addEventListener('click', load)
   $('exportCsv').addEventListener('click', exportCsv)
+  $('unitOriginalBtn').addEventListener('click', () => setUnitMode('original'))
+  $('unitConvertedBtn').addEventListener('click', () => setUnitMode('converted'))
   $('branchOptions').addEventListener('change', (event) => {
     const input = event.target
     if (!input.matches('input[type="checkbox"]')) return

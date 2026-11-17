@@ -88,6 +88,14 @@
           <button id="clearSearch" class="btn-clear" style="display:none;" title="Xóa tìm kiếm">&times;</button>
         </div>
       </div>
+      <div class="unit-mode-control">
+        <span class="unit-mode-label" id="unitModeLabel">Đơn vị tính</span>
+        <div class="view-toggle" role="group" aria-labelledby="unitModeLabel">
+          <button type="button" id="unitOriginalBtn" class="toggle-btn" aria-pressed="false">ĐVT gốc</button>
+          <button type="button" id="unitConvertedBtn" class="toggle-btn active" aria-pressed="true">Quy đổi theo quy ước</button>
+        </div>
+        <span class="unit-mode-hint">Hàng chưa có quy ước giữ nguyên đơn vị gốc.</span>
+      </div>
       <fieldset class="branch-filter" id="branchFilter" hidden>
         <legend>Chi nhánh hiển thị</legend>
         <div class="branch-options" id="branchOptions"></div>

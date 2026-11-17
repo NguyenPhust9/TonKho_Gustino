@@ -562,6 +562,25 @@ body {
   margin-left: auto;
 }
 
+.unit-mode-control {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.unit-mode-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.unit-mode-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 .view-toggle {
   display: inline-flex;
   background: #f1f5f9;
