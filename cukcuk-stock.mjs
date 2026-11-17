@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import minimumStockConfig from './data/minimum-stocks-by-branch.json' with { type: 'json' }
+import { attachCatalogDescriptions, convertStockUnits } from './lib/stock-unit-conversion.mjs'
 
 for (const envFile of ['.env.local', '.env']) {
   if (existsSync(envFile) && typeof process.loadEnvFile === 'function') {
@@ -21,27 +22,63 @@ async function request(path, { token, companyCode, body } = {}) {
   }
 }
 const required = (key) => { if (!process.env[key]) throw new Error(`Thiếu ${key}`); return process.env[key] }
-export async function getBranches() {
+async function getApiAuth() {
   const loginData = { AppID: required('CUKCUK_APP_ID'), Domain: required('CUKCUK_DOMAIN'), LoginTime: new Date().toISOString() }
   const SignatureInfo = createHmac('sha256', required('CUKCUK_SECRET_KEY')).update(JSON.stringify(loginData), 'utf8').digest('hex')
   const login = await request('/api/Account/Login', { body: { ...loginData, SignatureInfo } })
-  const branches = await request('/api/v1/branchs/all?includeInactive=false', { token: login.Data.AccessToken, companyCode: login.Data.CompanyCode })
-  return branches.Data.map(({ Code, Name }) => ({ code: Code, name: Name }))
+  return { token: login.Data.AccessToken, companyCode: login.Data.CompanyCode }
+}
+
+async function getApiBranches(auth) {
+  const result = await request('/api/v1/branchs/all?includeInactive=false', auth)
+  return result.Data
+}
+
+async function getPagedRows(path, auth, params) {
+  const rows = [], limit = 100
+  for (let page = 1; ; page++) {
+    const result = await request(path, { ...auth, body: { ...params, Page: page, Limit: limit } })
+    if (!Array.isArray(result.Data)) throw new Error('Phản hồi danh sách CukCuk không hợp lệ')
+    rows.push(...result.Data)
+    if (result.Data.length < limit || (Number(result.Total) > 0 && rows.length >= Number(result.Total))) break
+    await sleep(400)
+  }
+  return rows
+}
+
+function getDates(fromDate, toDate) {
+  const from = fromDate || required('CUKCUK_FROM_DATE'), to = toDate || required('CUKCUK_TO_DATE')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new Error('Ngày lọc phải có dạng YYYY-MM-DD')
+  return { from, to }
+}
+
+async function getBranchStock(auth, branch, from, to) {
+  return getPagedRows('/api/v1/stock/summary/paging', auth, { BranchId: branch.Id, FromDate: `${from}T00:00:00`, ToDate: `${to}T23:59:59` })
+}
+
+export async function getBranches() {
+  const branches = await getApiBranches(await getApiAuth())
+  return branches.map(({ Code, Name }) => ({ code: Code, name: Name }))
 }
 
 export async function getAllStockSummaries({ fromDate, toDate } = {}) {
-  const branches = await getBranches()
+  const { from, to } = getDates(fromDate, toDate)
+  const auth = await getApiAuth()
+  const branches = await getApiBranches(auth)
   const results = []
   for (const branch of branches) {
-    results.push(await getStockSummary({ branchCode: branch.code, fromDate, toDate }))
+    const rows = await getBranchStock(auth, branch, from, to)
+    await sleep(400)
+    const items = await getPagedRows('/api/v1/inventoryitems/paging', auth, { BranchId: branch.Id, IncludeInactive: true })
+    results.push({ branch: { code: branch.Code, name: branch.Name }, rows: attachCatalogDescriptions(rows, items) })
     await sleep(400)
   }
   return {
     branches: results.map(({ branch }) => branch),
-    fromDate,
-    toDate,
+    fromDate: from,
+    toDate: to,
     minimumStockSource: { name: 'Theo từng chi nhánh' },
-    rows: results.flatMap(({ branch, rows }) => rows.map((row) => {
+    rows: convertStockUnits(results.flatMap(({ branch, rows }) => rows.map((row) => {
       const code = String(row.InventoryItemCode || '').trim()
       const minimumStockByCode = minimumStocksByBranch[branch.code] || {}
       return {
@@ -50,28 +87,18 @@ export async function getAllStockSummaries({ fromDate, toDate } = {}) {
         BranchName: branch.name,
         MinimumStock: Object.hasOwn(minimumStockByCode, code) ? minimumStockByCode[code] : null
       }
-    }))
+    })))
   }
 }
 
 export async function getStockSummary({ branchCode, fromDate, toDate } = {}) {
-  const loginData = { AppID: required('CUKCUK_APP_ID'), Domain: required('CUKCUK_DOMAIN'), LoginTime: new Date().toISOString() }
-  const SignatureInfo = createHmac('sha256', required('CUKCUK_SECRET_KEY')).update(JSON.stringify(loginData), 'utf8').digest('hex')
-  const login = await request('/api/Account/Login', { body: { ...loginData, SignatureInfo } })
-  const auth = { token: login.Data.AccessToken, companyCode: login.Data.CompanyCode }
-  const code = branchCode || required('CUKCUK_BRANCH_CODE'), from = fromDate || required('CUKCUK_FROM_DATE'), to = toDate || required('CUKCUK_TO_DATE')
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) throw new Error('Ngày lọc phải có dạng YYYY-MM-DD')
-  const branches = await request('/api/v1/branchs/all?includeInactive=false', auth)
-  const branch = branches.Data.find((row) => row.Code === code)
+  const { from, to } = getDates(fromDate, toDate)
+  const auth = await getApiAuth()
+  const code = branchCode || required('CUKCUK_BRANCH_CODE')
+  const branches = await getApiBranches(auth)
+  const branch = branches.find((row) => row.Code === code)
   if (!branch) throw new Error(`Không tìm thấy chi nhánh ${code}`)
-  const rows = [], limit = 100
-  for (let page = 1; ; page++) {
-    const result = await request('/api/v1/stock/summary/paging', { ...auth, body: { BranchId: branch.Id, FromDate: `${from}T00:00:00`, ToDate: `${to}T23:59:59`, Page: page, Limit: limit } })
-    if (!Array.isArray(result.Data)) throw new Error('Phản hồi tồn kho không hợp lệ')
-    rows.push(...result.Data)
-    if (result.Data.length < limit || (Number(result.Total) > 0 && rows.length >= Number(result.Total))) break
-    await sleep(400)
-  }
+  const rows = await getBranchStock(auth, branch, from, to)
   return { branch: { code: branch.Code, name: branch.Name }, fromDate: from, toDate: to, total: rows.length, rows }
 }
 if (process.argv[1]?.endsWith('cukcuk-stock.mjs')) getStockSummary().then(({ branch, total }) => console.log(`Chi nhánh: ${branch.name} — ${total} dòng`)).catch((error) => { console.error(error.message); process.exitCode = 1 })

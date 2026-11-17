@@ -11,9 +11,9 @@ let currentView = 'cards' // 'cards' | 'table'
 let minStockSource = 'B004'
 
 // ================= NUMBER FORMATTING =================
-// Định dạng chuẩn, số tự nhiên, không dùng font nghệ thuật hay ký hiệu lạ
+// Hiển thị tối đa 1 chữ số thập phân như báo cáo CukCuk; giữ số gốc để tính toán.
 const qtyFormatter = new Intl.NumberFormat('vi-VN', {
-  maximumFractionDigits: 3,
+  maximumFractionDigits: 1,
   minimumFractionDigits: 0
 })
 
@@ -21,8 +21,7 @@ function formatQty(val) {
   if (val === null || val === undefined || val === '') return '0'
   const num = Number(val)
   if (isNaN(num)) return '0'
-  const clean = Math.round(num * 1000) / 1000
-  return qtyFormatter.format(clean)
+  return qtyFormatter.format(num)
 }
 
 function formatDateISO(d) {
@@ -60,6 +59,48 @@ function setDatePreset(type) {
 }
 
 // ================= FILTER & DATA COMPUTATION =================
+function getGroupLabels(branches) {
+  const minimums = branches.map((b) => b.minimumStock)
+  const uniformMinimum = minimums.length > 0 && minimums.every((value) => value !== null && value === minimums[0])
+  const labels = [...new Set(branches.map((b) => b.conversionLabel).filter(Boolean))]
+  return {
+    minimumLabel: uniformMinimum ? formatQty(minimums[0]) : minimums.some((value) => value !== null) ? 'Theo chi nhánh' : '—',
+    conversionLabel: labels.length === 1 ? labels[0] : labels.length ? 'Quy đổi theo từng chi nhánh' : ''
+  }
+}
+
+function groupStockRows(rows) {
+  const map = new Map()
+  rows.forEach((x) => {
+    const code = String(x.InventoryItemCode || '').trim()
+    const unit = String(x.DisplayUnitName || x.UnitName || 'Chưa rõ ĐVT').trim()
+    // Separate units that cannot be converted, so totals never add bags to jars, etc.
+    const key = JSON.stringify([code || x.InventoryItemName || '', unit.toLocaleLowerCase('vi')])
+    if (!map.has(key)) map.set(key, { code: code || '—', name: x.InventoryItemName || 'Không tên', unit, branches: [] })
+    const conversion = x.AppliedConversion
+    const minimum = x.DisplayMinimumStock !== undefined ? x.DisplayMinimumStock : x.MinimumStock
+    map.get(key).branches.push({
+      name: x.BranchName,
+      code: x.BranchCode,
+      qty: Number(x.DisplayEndingStock ?? x.EndingStock ?? 0),
+      minimumStock: minimum == null ? null : Number(minimum),
+      baseQty: Number(x.EndingStock || 0),
+      baseUnit: String(x.UnitName || '').trim(),
+      description: x.Description || '',
+      conversionLabel: conversion ? `1 ${conversion.fromUnit} = ${new Intl.NumberFormat('vi-VN', { maximumSignificantDigits: 12 }).format(conversion.factor)} ${conversion.toUnit}` : ''
+    })
+  })
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+}
+
+function branchQuantityTitle(branch) {
+  return [
+    `${formatQty(branch.baseQty)} ${branch.baseUnit}`,
+    branch.conversionLabel,
+    branch.description
+  ].filter(Boolean).join(' · ')
+}
+
 function getSelectedBranches() {
   return rawBranches.filter((b) => selectedBranchCodes?.has(b.code))
 }
@@ -85,6 +126,7 @@ function getSelectedGroups() {
     return {
       ...g,
       branches,
+      ...getGroupLabels(branches),
       totalQty: branches.reduce((sum, b) => sum + b.qty, 0),
       hasNegative: branches.some((b) => b.qty < 0),
       hasEmpty: branches.some((b) => b.qty === 0),
@@ -114,7 +156,7 @@ function getFilteredGroups(groups = getSelectedGroups()) {
     if (query) {
       const matchCode = (g.code || '').toLowerCase().includes(query)
       const matchName = (g.name || '').toLowerCase().includes(query)
-      const matchUnit = (g.unit || '').toLowerCase().includes(query)
+      const matchUnit = [g.unit, ...g.branches.map((b) => `${b.baseUnit} ${b.description}`)].join(' ').toLowerCase().includes(query)
       return matchCode || matchName || matchUnit
     }
 
@@ -163,7 +205,7 @@ function renderCardsView(list) {
       const statusText = getBranchStatusLabel(b.qty)
 
       return `
-        <div class="branch-row ${statusClass}">
+        <div class="branch-row ${statusClass}" title="${escapeHtml(branchQuantityTitle(b))}">
           <div class="branch-title">
             <span>${escapeHtml(b.name)}</span>
           </div>
@@ -185,6 +227,7 @@ function renderCardsView(list) {
           <span class="total-pill">Tổng: ${formatQty(visibleTotal)}</span>
         </div>
         <h2 class="card-title" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</h2>
+        ${g.conversionLabel ? `<p class="conversion-note">${escapeHtml(g.conversionLabel)}</p>` : ''}
         <div class="branch-list">
           ${branchRows}
         </div>
@@ -235,17 +278,18 @@ function renderMatrixView(list) {
   // Tạo các dòng dữ liệu
   const html = list.map((g, idx) => {
     // Tạo map tồn theo branch code để ánh xạ nhanh
-    const branchMap = new Map(g.branches.map((b) => [b.code, b.qty]))
+    const branchMap = new Map(g.branches.map((b) => [b.code, b]))
 
     const branchCells = branches.map((b) => {
-      const qty = branchMap.has(b.code) ? branchMap.get(b.code) : 0
+      const branch = branchMap.get(b.code)
+      const qty = branch?.qty ?? 0
       let cellStyle = ''
       if (qty < 0) cellStyle = 'color: #dc2626; font-weight: 700; background: #fef2f2;'
       else if (qty === 0) cellStyle = 'color: #94a3b8;'
-      else if (g.minimumStock > 0 && qty < g.minimumStock) cellStyle = 'color: #b45309; font-weight: 700; background: #fffbeb;'
+      else if (branch?.minimumStock > 0 && qty < branch.minimumStock) cellStyle = 'color: #b45309; font-weight: 700; background: #fffbeb;'
       else cellStyle = 'color: #047857; font-weight: 600;'
 
-      return `<td class="num-cell" style="${cellStyle}">${formatQty(qty)}</td>`
+      return `<td class="num-cell" title="${branch ? escapeHtml(branchQuantityTitle(branch)) : ''}" style="${cellStyle}">${formatQty(qty)}</td>`
     }).join('')
 
     return `
@@ -253,8 +297,8 @@ function renderMatrixView(list) {
         <td style="text-align: center; color: #94a3b8; font-size: 12px;">${idx + 1}</td>
         <td class="sticky-code"><span class="item-code">${escapeHtml(g.code)}</span></td>
         <td class="sticky-name" style="font-weight: 500;">${escapeHtml(g.name)}</td>
-        <td style="text-align: center;"><span class="item-unit">${escapeHtml(g.unit)}</span></td>
-        <td class="num-cell">${g.minimumStock === null ? '—' : formatQty(g.minimumStock)}</td>
+        <td style="text-align: center;"><span class="item-unit" title="${escapeHtml(g.conversionLabel)}">${escapeHtml(g.unit)}</span></td>
+        <td class="num-cell" title="${escapeHtml(g.branches.map((b) => `${b.name}: ${b.minimumStock === null ? '—' : formatQty(b.minimumStock)} ${g.unit}`).join(' · '))}">${g.minimumLabel}</td>
         ${branchCells}
         <td class="num-cell cell-total">${formatQty(g.totalQty)}</td>
       </tr>
@@ -340,48 +384,7 @@ async function load() {
         : data.minimumStockSource
     }
 
-    // Nhóm mặt hàng
-    const map = new Map()
-    data.rows.forEach((x) => {
-      const key = String(x.InventoryItemCode || x.InventoryItemName || '').trim()
-      if (!map.has(key)) {
-        map.set(key, {
-          code: String(x.InventoryItemCode || '').trim() || '—',
-          name: x.InventoryItemName || 'Không tên',
-          unit: x.UnitName || 'Chưa rõ ĐVT',
-          minimumStock: x.MinimumStock === null ? null : Number(x.MinimumStock || 0),
-          branches: []
-        })
-      }
-      map.get(key).branches.push({
-        name: x.BranchName,
-        code: x.BranchCode,
-        qty: Number(x.EndingStock || 0),
-        minimumStock: x.MinimumStock === null ? null : Number(x.MinimumStock || 0)
-      })
-      if (x.MinimumStock !== null) map.get(key).minimumStock = Number(x.MinimumStock || 0)
-    })
-
-    // Tính toán tổng tồn và trạng thái cho từng mặt hàng
-    rawGroups = [...map.values()].map((g) => {
-      const totalQty = g.branches.reduce((sum, b) => sum + b.qty, 0)
-      const hasNegative = g.branches.some((b) => b.qty < 0)
-      const hasEmpty = g.branches.some((b) => b.qty === 0)
-      const hasBelowMinimum = g.branches.some((b) => b.minimumStock > 0 && b.qty > 0 && b.qty < b.minimumStock)
-      const allAvailable = g.branches.every((b) => b.qty > 0)
-
-      return {
-        ...g,
-        totalQty,
-        hasNegative,
-        hasEmpty,
-        hasBelowMinimum,
-        allAvailable
-      }
-    })
-
-    // Sắp xếp theo tên tiếng Việt
-    rawGroups.sort((a, b) => a.name.localeCompare(b.name, 'vi'))
+    rawGroups = groupStockRows(data.rows)
 
     pill.className = 'status-pill connected'
     $('statusText').textContent = `Đã đồng bộ ${rawBranches.length} chi nhánh`

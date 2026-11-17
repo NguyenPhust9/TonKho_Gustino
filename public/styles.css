@@ -684,6 +684,13 @@ body {
   overflow: hidden;
 }
 
+.conversion-note {
+  margin: -6px 0 0;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 /* Branch Rows inside card */
 .branch-list {
   display: flex;
