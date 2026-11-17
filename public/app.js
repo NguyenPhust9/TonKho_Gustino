@@ -9,7 +9,7 @@ let rawGroups = []
 let selectedBranchCodes = null
 let currentTab = 'all'
 let currentView = 'cards' // 'cards' | 'table'
-let currentUnitMode = 'converted' // 'original' | 'converted'
+const selectedItemUnits = new Map()
 let minStockSource = 'B004'
 
 // ================= NUMBER FORMATTING =================
@@ -71,44 +71,103 @@ function getGroupLabels(branches) {
   }
 }
 
-function groupStockRows(rows, unitMode = currentUnitMode) {
-  const converted = unitMode === 'converted'
+function itemKey(row) {
+  return String(row.InventoryItemCode || row.InventoryItemName || '').trim()
+}
+
+function unitKey(value) {
+  return String(value || '').trim().toLocaleLowerCase('vi')
+}
+
+function rowUnitOptions(row) {
+  const original = String(row.UnitName || 'Chưa rõ ĐVT').trim()
+  const options = new Map([[unitKey(original), { unit: original, factor: 1, available: true }]])
+  for (const option of row.AvailableUnits || []) {
+    if (option.unit && !options.has(unitKey(option.unit))) {
+      options.set(unitKey(option.unit), { ...option, available: option.available !== false && Number.isFinite(option.factor) && option.factor > 0 })
+    }
+  }
+  // Supports responses from the previous API version during deployment.
+  const conversion = row.UnitConversion || row.AppliedConversion
+  if (conversion && Number.isFinite(conversion.factor) && conversion.factor > 0 && !options.has(unitKey(conversion.toUnit))) {
+    options.set(unitKey(conversion.toUnit), { unit: conversion.toUnit, factor: conversion.factor, available: true })
+  }
+  return [...options.values()]
+}
+
+function groupUnitOptions(branches) {
+  const options = new Map()
+  for (const branch of branches) {
+    for (const option of branch.unitOptions) {
+      const key = unitKey(option.unit)
+      if (!options.has(key)) options.set(key, { unit: option.unit, available: false })
+    }
+  }
+  return [...options.values()].map((option) => ({
+    ...option,
+    available: branches.every((branch) => branch.unitOptions.some((candidate) => unitKey(candidate.unit) === unitKey(option.unit) && candidate.available))
+  }))
+}
+
+function groupStockRows(rows) {
   const map = new Map()
   rows.forEach((x) => {
     const code = String(x.InventoryItemCode || '').trim()
-    const unit = String((converted && x.DisplayUnitName) || x.UnitName || 'Chưa rõ ĐVT').trim()
+    const keyCode = itemKey(x)
+    const options = rowUnitOptions(x)
+    const selectedUnit = selectedItemUnits.get(keyCode)
+    const choice = options.find((option) => option.available && unitKey(option.unit) === unitKey(selectedUnit)) || options[0]
+    const unit = choice.unit
+    const factor = choice.factor
     // Separate units that cannot be converted, so totals never add bags to jars, etc.
     const key = JSON.stringify([code || x.InventoryItemName || '', unit.toLocaleLowerCase('vi')])
-    if (!map.has(key)) map.set(key, { code: code || '—', name: x.InventoryItemName || 'Không tên', unit, branches: [] })
-    const conversion = converted ? x.AppliedConversion : null
-    const minimum = converted && x.DisplayMinimumStock !== undefined ? x.DisplayMinimumStock : x.MinimumStock
+    if (!map.has(key)) map.set(key, { code: code || '—', itemKey: keyCode, name: x.InventoryItemName || 'Không tên', unit, branches: [] })
+    const minimum = x.MinimumStock
     map.get(key).branches.push({
       name: x.BranchName,
       code: x.BranchCode,
-      qty: Number((converted ? x.DisplayEndingStock : undefined) ?? x.EndingStock ?? 0),
-      minimumStock: minimum == null ? null : Number(minimum),
+      qty: Number(x.EndingStock || 0) * factor,
+      minimumStock: minimum == null ? null : Number(minimum) * factor,
       baseQty: Number(x.EndingStock || 0),
       baseUnit: String(x.UnitName || '').trim(),
       description: x.Description || '',
-      conversionLabel: conversion ? `1 ${conversion.fromUnit} = ${new Intl.NumberFormat('vi-VN', { maximumSignificantDigits: 12 }).format(conversion.factor)} ${conversion.toUnit}` : ''
+      unitOptions: options,
+      conversionLabel: unitKey(unit) !== unitKey(x.UnitName) || factor !== 1
+        ? `1 ${String(x.UnitName).trim()} = ${new Intl.NumberFormat('vi-VN', { maximumSignificantDigits: 12 }).format(factor)} ${unit}` : ''
     })
   })
   return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'vi'))
 }
 
-function setUnitMode(mode) {
-  if (mode !== 'original' && mode !== 'converted') return
-  currentUnitMode = mode
+function setItemUnit(key, name) {
+  const rows = rawRows.filter((row) => itemKey(row) === key)
+  if (!rows.length) return
+  if (name === '__original__') selectedItemUnits.delete(key)
+  else {
+    // Only offer a target that is valid for every branch of this item.
+    if (!rows.every((row) => rowUnitOptions(row).some((option) => option.available && unitKey(option.unit) === unitKey(name)))) return
+    selectedItemUnits.set(key, name)
+  }
   rawGroups = groupStockRows(rawRows)
   render()
 }
 
-function updateUnitModeControls() {
-  for (const [id, mode] of [['unitOriginalBtn', 'original'], ['unitConvertedBtn', 'converted']]) {
-    const selected = currentUnitMode === mode
-    $(id).classList.toggle('active', selected)
-    $(id).setAttribute('aria-pressed', String(selected))
-  }
+function renderUnitSelector(group) {
+  const rows = rawRows.filter((row) => itemKey(row) === group.itemKey)
+  const branches = rows.map((row) => ({ unitOptions: rowUnitOptions(row) }))
+  const options = groupUnitOptions(branches)
+  if (options.length < 2) return `<span class="item-unit">${escapeHtml(group.unit)}</span>`
+  const sameOriginalUnit = new Set(rows.map((row) => unitKey(row.UnitName))).size === 1
+  const selected = selectedItemUnits.get(group.itemKey)
+  return `
+    <label class="item-unit-control">
+      <span class="item-unit-label">Đổi ĐVT</span>
+      <select class="item-unit-select" data-item-unit="${escapeHtml(group.itemKey)}" aria-label="Đổi đơn vị tính cho ${escapeHtml(group.name)}">
+        ${sameOriginalUnit ? '' : `<option value="__original__" ${selected ? '' : 'selected'}>ĐVT gốc</option>`}
+        ${options.map((option) => `<option value="${escapeHtml(option.unit)}" ${unitKey(option.unit) === unitKey(selected || (sameOriginalUnit ? group.unit : '')) ? 'selected' : ''} ${option.available ? '' : 'disabled'}>${escapeHtml(option.unit)}${option.available ? '' : ' (chưa có hệ số)'}</option>`).join('')}
+      </select>
+    </label>
+  `
 }
 
 function branchQuantityTitle(branch) {
@@ -240,7 +299,7 @@ function renderCardsView(list) {
         <div class="card-top">
           <div class="card-tags">
             <span class="item-code">${escapeHtml(g.code)}</span>
-            <span class="item-unit">${escapeHtml(g.unit)}</span>
+            ${renderUnitSelector(g)}
           </div>
           <span class="total-pill">Tổng: ${formatQty(visibleTotal)}</span>
         </div>
@@ -315,7 +374,7 @@ function renderMatrixView(list) {
         <td style="text-align: center; color: #94a3b8; font-size: 12px;">${idx + 1}</td>
         <td class="sticky-code"><span class="item-code">${escapeHtml(g.code)}</span></td>
         <td class="sticky-name" style="font-weight: 500;">${escapeHtml(g.name)}</td>
-        <td style="text-align: center;"><span class="item-unit" title="${escapeHtml(g.conversionLabel)}">${escapeHtml(g.unit)}</span></td>
+        <td style="text-align: center;" title="${escapeHtml(g.conversionLabel)}">${renderUnitSelector(g)}</td>
         <td class="num-cell" title="${escapeHtml(g.branches.map((b) => `${b.name}: ${b.minimumStock === null ? '—' : formatQty(b.minimumStock)} ${g.unit}`).join(' · '))}">${g.minimumLabel}</td>
         ${branchCells}
         <td class="num-cell cell-total">${formatQty(g.totalQty)}</td>
@@ -327,7 +386,6 @@ function renderMatrixView(list) {
 }
 
 function render() {
-  updateUnitModeControls()
   const groups = getSelectedGroups()
   const filtered = getFilteredGroups(groups)
   updateKPIs(groups)
@@ -404,6 +462,10 @@ async function load() {
     }
 
     rawRows = data.rows
+    for (const [key, name] of selectedItemUnits) {
+      const rows = rawRows.filter((row) => itemKey(row) === key)
+      if (!rows.length || !rows.every((row) => rowUnitOptions(row).some((option) => option.available && unitKey(option.unit) === unitKey(name)))) selectedItemUnits.delete(key)
+    }
     rawGroups = groupStockRows(rawRows)
 
     pill.className = 'status-pill connected'
@@ -490,8 +552,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
   $('refresh').addEventListener('click', load)
   $('exportCsv').addEventListener('click', exportCsv)
-  $('unitOriginalBtn').addEventListener('click', () => setUnitMode('original'))
-  $('unitConvertedBtn').addEventListener('click', () => setUnitMode('converted'))
+  const onUnitChange = (event) => {
+    const select = event.target.closest('select[data-item-unit]')
+    if (select) setItemUnit(select.dataset.itemUnit, select.value)
+  }
+  $('cardsView').addEventListener('change', onUnitChange)
+  $('matrixBody').addEventListener('change', onUnitChange)
   $('branchOptions').addEventListener('change', (event) => {
     const input = event.target
     if (!input.matches('input[type="checkbox"]')) return

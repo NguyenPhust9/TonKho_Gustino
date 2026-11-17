@@ -562,25 +562,6 @@ body {
   margin-left: auto;
 }
 
-.unit-mode-control {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.unit-mode-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.unit-mode-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
 .view-toggle {
   display: inline-flex;
   background: #f1f5f9;
@@ -658,6 +639,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .item-code {
@@ -678,6 +660,39 @@ body {
   padding: 2px 7px;
   border-radius: 4px;
   border: 1px solid #e2e8f0;
+}
+
+.item-unit-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.item-unit-label {
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.item-unit-select {
+  max-width: 150px;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: #0f172a;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.item-unit-select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .total-pill {

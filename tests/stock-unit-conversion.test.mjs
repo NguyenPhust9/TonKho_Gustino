@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { attachCatalogDescriptions, convertStockUnits, parseUnitConversion } from '../lib/stock-unit-conversion.mjs'
+import { attachCatalogDescriptions, convertStockUnits, getAvailableUnits, parseUnitConversion } from '../lib/stock-unit-conversion.mjs'
 
 test('reads complete quantity notes, ratios and equations with the correct direction', () => {
   for (const [base, description, target, factor] of [
@@ -105,4 +105,13 @@ test('normalizes compatible measurements but does not infer a missing package ru
   const unified = convertStockUnits([kg, gram])
   assert.ok(unified.every((row) => row.DisplayUnitName === 'Kg'))
   assert.equal(unified[1].DisplayEndingStock, 0.5)
+})
+
+test('unit choices include original, description-based and metric conversions', () => {
+  const row = { InventoryItemCode: 'PORTION', UnitName: 'Phần', UnitConversion: parseUnitConversion('Phần', '180g') }
+  const options = getAvailableUnits(row)
+  assert.equal(options.find((option) => option.unit === 'Phần').factor, 1)
+  assert.equal(options.find((option) => option.unit === 'g').factor, 180)
+  assert.equal(options.find((option) => option.unit === 'Kg').factor, 0.18)
+  assert.ok(options.every((option) => option.available))
 })
