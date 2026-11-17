@@ -1,8 +1,10 @@
 {
   "items": {
     "BBKS45G": {
-      "conversions": [],
-      "unavailableUnits": ["Cái", "Túi"]
+      "conversions": [
+        { "fromUnit": "Gói", "toUnit": "Cái", "factor": 12 }
+      ],
+      "unavailableUnits": ["Túi"]
     }
   }
 }

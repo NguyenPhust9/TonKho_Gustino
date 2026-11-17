@@ -159,6 +159,16 @@ function renderUnitSelector(group) {
   if (options.length < 2) return `<span class="item-unit">${escapeHtml(group.unit)}</span>`
   const sameOriginalUnit = new Set(rows.map((row) => unitKey(row.UnitName))).size === 1
   const selected = selectedItemUnits.get(group.itemKey)
+  const available = options.filter((option) => option.available)
+  if (options.length === 2 && available.length === 2 && sameOriginalUnit) {
+    const target = available.find((option) => unitKey(option.unit) !== unitKey(group.unit))
+    const rules = [...new Set(rows.map((row) => {
+      const option = rowUnitOptions(row).find((candidate) => candidate.available && unitKey(candidate.unit) !== unitKey(row.UnitName))
+      return `1 ${row.UnitName} = ${new Intl.NumberFormat('vi-VN', { maximumSignificantDigits: 12 }).format(option.factor)} ${option.unit}`
+    }))]
+    return `<span class="item-unit">${escapeHtml(group.unit)}</span>
+      <button type="button" class="item-unit-button" data-item-unit="${escapeHtml(group.itemKey)}" data-unit-target="${escapeHtml(target.unit)}" title="${escapeHtml(rules.join(' · '))}" aria-label="Đổi ${escapeHtml(group.name)} sang ${escapeHtml(target.unit)}">⇄ Đổi sang ${escapeHtml(target.unit)}</button>`
+  }
   return `
     <label class="item-unit-control">
       <span class="item-unit-label">Đổi ĐVT</span>
@@ -558,6 +568,12 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   $('cardsView').addEventListener('change', onUnitChange)
   $('matrixBody').addEventListener('change', onUnitChange)
+  const onUnitClick = (event) => {
+    const button = event.target.closest('button[data-unit-target]')
+    if (button) setItemUnit(button.dataset.itemUnit, button.dataset.unitTarget)
+  }
+  $('cardsView').addEventListener('click', onUnitClick)
+  $('matrixBody').addEventListener('click', onUnitClick)
   $('branchOptions').addEventListener('change', (event) => {
     const input = event.target
     if (!input.matches('input[type="checkbox"]')) return

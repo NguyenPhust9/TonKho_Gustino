@@ -695,6 +695,28 @@ body {
   outline-offset: 2px;
 }
 
+.item-unit-button {
+  padding: 4px 8px;
+  border: 1px solid #7dd3fc;
+  border-radius: 5px;
+  background: var(--primary-light);
+  color: #0369a1;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.item-unit-button:hover {
+  background: #bae6fd;
+}
+
+.item-unit-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .total-pill {
   font-size: 11px;
   font-weight: 600;

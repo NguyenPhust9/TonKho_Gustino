@@ -61,6 +61,19 @@ export async function getBranches() {
   return branches.map(({ Code, Name }) => ({ code: Code, name: Name }))
 }
 
+export async function getAllInventoryCatalogs({ onProgress = () => {} } = {}) {
+  const auth = await getApiAuth()
+  const branches = await getApiBranches(auth)
+  const catalogs = []
+  for (const branch of branches) {
+    const items = await getPagedRows('/api/v1/inventoryitems/paging', auth, { BranchId: branch.Id, IncludeInactive: true })
+    catalogs.push({ branch: { code: branch.Code, name: branch.Name }, items })
+    onProgress({ branchCode: branch.Code, branchName: branch.Name, count: items.length })
+    await sleep(400)
+  }
+  return { fetchedAt: new Date().toISOString(), source: 'https://graphapi.cukcuk.vn/api/v1/inventoryitems/paging', branches: catalogs }
+}
+
 export async function getAllStockSummaries({ fromDate, toDate } = {}) {
   const { from, to } = getDates(fromDate, toDate)
   const auth = await getApiAuth()

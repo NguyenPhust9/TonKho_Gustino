@@ -84,6 +84,28 @@ test('cards, matrix, branch filter and CSV use the same converted quantities and
   assert.ok((await csv()).includes('"Cái",133,133'))
 })
 
+test('dumpling button switches portions to pieces and back in cards and matrix', async () => {
+  const catalogs = JSON.parse(await readFile(new URL('../data/inventory-catalogs.json', import.meta.url), 'utf8'))
+  const item = catalogs.branches.find(({ branch }) => branch.code === 'B002').items.find((item) => item.Code === 'SCCC')
+  const source = [{ InventoryItemId: item.Id, InventoryItemCode: item.Code, InventoryItemName: item.Name, BranchCode: 'A', BranchName: '15H', UnitName: item.UnitName, EndingStock: 2.5, MinimumStock: 3 }]
+  const harness = dashboard(attachCatalogDescriptions(source, [item]))
+  await harness.start()
+  const { context, elements, csv } = harness
+  assert.ok(elements.get('cardsView').innerHTML.includes('Đổi sang Cái'))
+  assert.ok(elements.get('cardsView').innerHTML.includes('1 Phần = 8 Cái'))
+  const clickUnit = (container, unit) => elements.get(container).dispatch('click', { target: { closest: () => ({ dataset: { itemUnit: 'SCCC', unitTarget: unit } }) } })
+  clickUnit('cardsView', 'Cái')
+  assert.ok(elements.get('cardsView').innerHTML.includes('Tổng: 20'))
+  assert.ok(elements.get('cardsView').innerHTML.includes('>24<'))
+  assert.ok(elements.get('cardsView').innerHTML.includes('Đổi sang Phần'))
+  vm.runInContext("currentView = 'table'; render(); exportCsv()", context)
+  assert.ok((await csv()).includes('"Cái",20,0,20'))
+  clickUnit('matrixBody', 'Phần')
+  assert.ok(elements.get('matrixBody').innerHTML.includes('>2,5<'))
+  assert.ok(elements.get('matrixBody').innerHTML.includes('Đổi sang Cái'))
+  assert.equal(harness.requests(), 1)
+})
+
 test('unconvertible units form separate rows instead of a mixed-unit total', () => {
   const rows = [
     { InventoryItemCode: 'BO', InventoryItemName: 'Bơ', BranchCode: 'A', BranchName: '15H', UnitName: 'Hũ', EndingStock: 2, MinimumStock: null },
@@ -117,12 +139,12 @@ test('per-item dropdown switches only that item, including matrix, minimums and 
   await harness.start()
   assert.equal(harness.requests(), 1)
   assert.ok(elements.get('cardsView').innerHTML.includes('Tổng: 47,6'))
-  assert.ok(elements.get('cardsView').innerHTML.includes('Đổi ĐVT'))
+  assert.ok(elements.get('cardsView').innerHTML.includes('Đổi sang Cái'))
   assert.ok(elements.get('cardsView').innerHTML.includes('data-item-unit="BABAVOMO"'))
-  assert.ok(elements.get('cardsView').innerHTML.includes('value="Phần" selected'))
+  assert.ok(elements.get('cardsView').innerHTML.includes('<span class="item-unit">Phần</span>'))
   assert.ok(elements.get('cardsView').innerHTML.includes('>26,6<'))
   assert.ok(elements.get('cardsView').innerHTML.includes('>30<'))
-  assert.ok(!elements.get('cardsView').innerHTML.includes('1 Phần = 5 Cái'))
+  assert.ok(!elements.get('cardsView').innerHTML.includes('<p class="conversion-note">1 Phần = 5 Cái'))
   elements.get('exportCsv').click()
   assert.ok((await csv()).includes('"Phần",26.6,21,47.6'))
 
@@ -163,39 +185,35 @@ test('switching units keeps unconverted quantities, negative stock, zero and unk
   assert.equal(vm.runInContext("getSelectedGroups().find(g => g.code === 'CAKE').branches[0].minimumStock", context), null)
 })
 
-test('a package dropdown uses its supplied factor, and unknown units cannot be selected', async () => {
-  // A synthetic package rule tests the UI without claiming it came from CukCuk.
-  const options = [
-    { unit: 'Gói', factor: 1, available: true },
-    { unit: 'Cái', factor: 4, available: true },
-    { unit: 'Túi', factor: null, available: false }
-  ]
+test('Kim Sa dropdown uses the confirmed 12 pieces per pack, and unknown units cannot be selected', async () => {
+  const options = attachCatalogDescriptions([{ InventoryItemCode: 'BBKS45G', UnitName: 'Gói' }], [])[0].AvailableUnits
   const source = [
-    { InventoryItemCode: 'PACKAGE', InventoryItemName: 'Kim sa', BranchCode: 'A', UnitName: 'Gói', EndingStock: 8.8333, MinimumStock: 10, AvailableUnits: options },
-    { InventoryItemCode: 'PACKAGE', InventoryItemName: 'Kim sa', BranchCode: 'B', UnitName: 'Gói', EndingStock: 9, MinimumStock: 5, AvailableUnits: options },
+    { InventoryItemCode: 'BBKS45G', InventoryItemName: 'Kim sa', BranchCode: 'A', UnitName: 'Gói', EndingStock: 8.8333, MinimumStock: 10, AvailableUnits: options },
+    { InventoryItemCode: 'BBKS45G', InventoryItemName: 'Kim sa', BranchCode: 'B', UnitName: 'Gói', EndingStock: 9, MinimumStock: 5, AvailableUnits: options },
     { InventoryItemCode: 'OTHER', BranchCode: 'A', UnitName: 'Phần', EndingStock: 21, MinimumStock: null }
   ]
   const harness = dashboard(source)
   const { context, elements, csv } = harness
   await harness.start()
   assert.ok(elements.get('cardsView').innerHTML.includes('value="Túi"  disabled'))
-  harness.selectUnit('PACKAGE', 'Cái')
-  assert.ok(elements.get('cardsView').innerHTML.includes('1 Gói = 4 Cái'))
-  assert.equal(vm.runInContext("rawGroups.find(g=>g.code==='PACKAGE').branches[0].qty", context), 35.3332)
-  assert.equal(vm.runInContext("rawGroups.find(g=>g.code==='PACKAGE').branches[0].minimumStock", context), 40)
+  harness.selectUnit('BBKS45G', 'Cái')
+  assert.ok(elements.get('cardsView').innerHTML.includes('1 Gói = 12 Cái'))
+  assert.ok(elements.get('cardsView').innerHTML.includes('>106<'))
+  assert.equal(vm.runInContext("rawGroups.find(g=>g.code==='BBKS45G').branches[0].qty", context), 8.8333 * 12)
+  assert.equal(vm.runInContext("rawGroups.find(g=>g.code==='BBKS45G').branches[0].minimumStock", context), 120)
   assert.equal(vm.runInContext("rawGroups.find(g=>g.code==='OTHER').unit", context), 'Phần')
   elements.get('exportCsv').click()
-  assert.ok((await csv()).includes('"Cái",35.3332,36,'))
-  harness.selectUnit('PACKAGE', 'Túi')
-  assert.equal(vm.runInContext("rawGroups.find(g=>g.code==='PACKAGE').unit", context), 'Cái')
+  assert.ok((await csv()).includes(`"Cái",${8.8333 * 12},108,`))
+  harness.selectUnit('BBKS45G', 'Túi')
+  assert.equal(vm.runInContext("rawGroups.find(g=>g.code==='BBKS45G').unit", context), 'Cái')
   for (let i = 0; i < 3; i++) {
-    harness.selectUnit('PACKAGE', 'Gói')
-    assert.equal(vm.runInContext("rawGroups.find(g=>g.code==='PACKAGE').branches[0].qty", context), 8.8333)
-    harness.selectUnit('PACKAGE', 'Cái')
+    harness.selectUnit('BBKS45G', 'Gói')
+    assert.equal(vm.runInContext("rawGroups.find(g=>g.code==='BBKS45G').branches[0].qty", context), 8.8333)
+    harness.selectUnit('BBKS45G', 'Cái')
   }
   assert.equal(harness.requests(), 1)
   await context.load()
-  assert.equal(vm.runInContext("rawGroups.find(g=>g.code==='PACKAGE').unit", context), 'Cái')
+  assert.equal(vm.runInContext("rawGroups.find(g=>g.code==='BBKS45G').unit", context), 'Cái')
 })
 
 test('mixed base units only merge when all branches can use the chosen unit', () => {

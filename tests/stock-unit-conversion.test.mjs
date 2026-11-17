@@ -115,3 +115,14 @@ test('unit choices include original, description-based and metric conversions', 
   assert.equal(options.find((option) => option.unit === 'Kg').factor, 0.18)
   assert.ok(options.every((option) => option.available))
 })
+
+test('confirmed Kim Sa rule supports both directions and leaves bag conversion unavailable', () => {
+  const options = getAvailableUnits({ InventoryItemCode: 'BBKS45G', UnitName: 'Gói' })
+  assert.equal(options.find((option) => option.unit === 'Cái').factor, 12)
+  assert.equal(options.find((option) => option.unit === 'Cái').available, true)
+  assert.equal(options.find((option) => option.unit === 'Túi').available, false)
+  assert.equal(options.find((option) => option.unit === 'Túi').factor, null)
+  const reversed = getAvailableUnits({ InventoryItemCode: 'BBKS45G', UnitName: 'Cái' })
+  assert.equal(reversed.find((option) => option.unit === 'Gói').factor, 1 / 12)
+  assert.equal(getAvailableUnits({ InventoryItemCode: 'OTHER', UnitName: 'Gói' }).length, 1)
+})

@@ -1,6 +1,27 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { getAllStockSummaries } from '../cukcuk-stock.mjs'
+import { getAllStockSummaries, getAllInventoryCatalogs } from '../cukcuk-stock.mjs'
+
+test('exports every catalog page for every branch, including inactive items', async (t) => {
+  const requests = []
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    const path = new URL(url).pathname
+    const body = options.body && JSON.parse(options.body)
+    if (path === '/api/Account/Login') return Response.json({ Success: true, Data: { AccessToken: 'test', CompanyCode: 'test' } })
+    if (path === '/api/v1/branchs/all') return Response.json({ Success: true, Data: [{ Id: 'a', Code: 'A', Name: 'A' }, { Id: 'b', Code: 'B', Name: 'B' }] })
+    assert.equal(path, '/api/v1/inventoryitems/paging')
+    assert.equal(body.IncludeInactive, true)
+    requests.push([body.BranchId, body.Page])
+    const total = body.BranchId === 'a' ? 153 : 1
+    const start = (body.Page - 1) * body.Limit
+    const Data = Array.from({ length: Math.min(body.Limit, total - start) }, (_, index) => ({ Id: `${body.BranchId}-${start + index}`, Inactive: true, Description: '8 cái' }))
+    return Response.json({ Success: true, Data, Total: total })
+  })
+  const catalog = await getAllInventoryCatalogs()
+  assert.deepEqual(requests, [['a', 1], ['a', 2], ['b', 1]])
+  assert.deepEqual(catalog.branches.map(({ items }) => items.length), [153, 1])
+  assert.equal(catalog.branches[0].items[152].Description, '8 cái')
+})
 
 test('loads descriptions through Open Platform only and joins catalog items by ID', async (t) => {
   const previous = Object.fromEntries(['CUKCUK_APP_ID', 'CUKCUK_DOMAIN', 'CUKCUK_SECRET_KEY'].map((key) => [key, process.env[key]]))
